@@ -345,7 +345,7 @@
 #define	MIN_VIBE_STRENGTH	0x0C
 #define	DEF_VIBE_STRENGTH	MAX_VIBE_STRENGTH
 
-#define MAX_TIMEOUT 	10000 /* 10s */
+#define MAX_TIMEOUT 	15000 /* 15s */
 #define	MAX_READ_BYTES	0xff
 
 #define SW_STATE_IDLE				0x00
