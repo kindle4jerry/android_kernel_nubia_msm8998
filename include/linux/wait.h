@@ -255,12 +255,7 @@ static inline void wake_up_pollfree(wait_queue_head_t *wq_head)
 									\
 		if (___wait_is_interruptible(state) && __int) {		\
 			__ret = __int;					\
-			if (exclusive) {				\
-				abort_exclusive_wait(&wq, &__wait, 	\
-						     NULL);		\
-				goto __out;				\
-			}						\
-			break;						\
+			goto __out;					\
 		}							\
 									\
 		cmd;							\
