@@ -45,7 +45,11 @@ EXPORT_SYMBOL_GPL(pm_suspend_target_state);
 
 unsigned int pm_suspend_global_flags;
 EXPORT_SYMBOL_GPL(pm_suspend_global_flags);
-
+//Begin [0016004715 add the kernel power code,20180316]
+#ifdef CONFIG_ZTEMT_POWER_DEBUG
+bool wakeup_wake_lock_debug = false;
+#endif
+//End [0016004715 add the kernel power code,20180316]
 static const struct platform_suspend_ops *suspend_ops;
 static const struct platform_freeze_ops *freeze_ops;
 static DECLARE_WAIT_QUEUE_HEAD(suspend_freeze_wait_head);
@@ -436,7 +440,11 @@ int suspend_devices_and_enter(suspend_state_t state)
 	error = platform_suspend_begin(state);
 	if (error)
 		goto Close;
-
+//Begin [0016004715 add the kernel power code,20180316]
+    #ifdef CONFIG_ZTEMT_POWER_DEBUG
+    wakeup_wake_lock_debug = true;
+    #endif //CONFIG_ZTEMT_POWER_DEBUG
+//End [0016004715 add the kernel power code,20180316]
 	suspend_console();
 	suspend_test_start();
 	error = dpm_suspend_start(PMSG_SUSPEND);
