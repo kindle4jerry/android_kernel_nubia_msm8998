@@ -1312,6 +1312,15 @@ enum fsync_mode {
 #define DUMMY_ENCRYPTION_ENABLED(sbi) (0)
 #endif
 
+//nubia add start
+#ifdef CONFIG_NUBIA_F2FS_TRIM_STAT
+#define NUBAI_F2FS_NO_TRIMED        0
+#define NUBAI_F2FS_TRIMING          1
+#define NUBAI_F2FS_TRIMED           2
+#define NUBIA_F2FS_EXIT_TRIM        9
+#endif
+//nubia add end
+
 struct f2fs_sb_info {
 	struct super_block *sb;			/* pointer to VFS super block */
 	struct proc_dir_entry *s_proc;		/* proc entry */
@@ -1512,6 +1521,12 @@ struct f2fs_sb_info {
 	unsigned int inline_xattr_slab_size;	/* default inline xattr slab size */
 
 	struct list_head list;
+
+//nubia add start
+#ifdef CONFIG_NUBIA_F2FS_TRIM_STAT
+    int trim_stat;        /*use for f2fs trim stats,no trimed,triming,trimed */
+#endif
+//nubia add end
 };
 
 struct f2fs_private_dio {
