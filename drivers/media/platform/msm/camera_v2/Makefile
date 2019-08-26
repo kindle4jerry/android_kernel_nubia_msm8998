@@ -9,6 +9,7 @@ ccflags-y += -I $(srctree)/drivers/media/platform/msm/camera_v2/jpeg_10
 ccflags-y += -I $(srctree)/drivers/media/platform/msm/camera_v2/jpeg_dma
 ccflags-y += -I $(srctree)/drivers/media/platform/msm/camera_v2/fd
 ccflags-y += -I $(srctree)/drivers/media/platform/msm/camera_v2/common
+ccflags-y += -I $(srctree)/drivers/media/platform/msm/camera_v2/al3200
 
 obj-$(CONFIG_MSMB_CAMERA) += common/
 obj-$(CONFIG_MSMB_CAMERA) += msm.o
@@ -22,3 +23,6 @@ obj-$(CONFIG_MSMB_JPEG) += jpeg_10/
 obj-$(CONFIG_MSM_JPEGDMA) += jpeg_dma/
 obj-$(CONFIG_MSMB_CAMERA) += msm_buf_mgr/
 obj-$(CONFIG_MSM_FD) += fd/
+#fengxun add for AL3200--------Start
+obj-$(CONFIG_AL3200) += al3200/
+#fengxun add for AL3200--------End
