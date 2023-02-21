@@ -7,4 +7,7 @@ obj-$(CONFIG_CUSE) += cuse.o
 
 fuse-objs := dev.o dir.o file.o inode.o control.o
 fuse-objs += passthrough.o
+
+ifeq ($(CONFIG_FUSE_FS_FILE_OBSERVER),y)
 fuse-objs += file_observer.o
+endif

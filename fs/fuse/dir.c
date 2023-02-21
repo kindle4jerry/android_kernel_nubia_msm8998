@@ -14,7 +14,9 @@
 #include <linux/namei.h>
 #include <linux/slab.h>
 //Nubia FileObserver Begin
+#ifdef CONFIG_FUSE_FS_FILE_OBSERVER
 #include "file_observer.h"
+#endif
 //Nubia FileObserver End
 
 static bool fuse_use_readdirplus(struct inode *dir, struct dir_context *ctx)
@@ -646,7 +648,9 @@ static int fuse_mknod(struct inode *dir, struct dentry *entry, umode_t mode,
 	args.in.args[1].value = entry->d_name.name;
 	ret = create_new_entry(fc, &args, dir, entry, mode);
         //Nubia FileObserver Begin
+#ifdef CONFIG_FUSE_FS_FILE_OBSERVER
         fuse_post_file_create(entry);
+#endif
         //Nubia FileObserver End
         return ret;
 }
@@ -678,7 +682,9 @@ static int fuse_mkdir(struct inode *dir, struct dentry *entry, umode_t mode)
 	args.in.args[1].value = entry->d_name.name;
 	ret = create_new_entry(fc, &args, dir, entry, S_IFDIR);
         //Nubia FileObserver Begin
+#ifdef CONFIG_FUSE_FS_FILE_OBSERVER
         fuse_post_file_mkdir(dir, entry);
+#endif
         //Nubia FileObserver End
         return ret;
 }
@@ -739,7 +745,9 @@ static int fuse_unlink(struct inode *dir, struct dentry *entry)
 		fuse_invalidate_entry_cache(entry);
 		fuse_update_ctime(inode);
                 //Nubia FileObserver Begin
+#ifdef CONFIG_FUSE_FS_FILE_OBSERVER
                 fuse_post_file_unlink(dir, entry);
+#endif
                 //Nubia FileObserver End
 	} else if (err == -EINTR)
 		fuse_invalidate_entry(entry);
@@ -763,7 +771,9 @@ static int fuse_rmdir(struct inode *dir, struct dentry *entry)
 		fuse_invalidate_attr(dir);
 		fuse_invalidate_entry_cache(entry);
                 //Nubia FileObserver Begin
+#ifdef CONFIG_FUSE_FS_FILE_OBSERVER
                 fuse_post_file_rmdir(dir, entry);
+#endif
                 //Nubia FileObserver End
 	} else if (err == -EINTR)
 		fuse_invalidate_entry(entry);
@@ -813,7 +823,9 @@ static int fuse_rename_common(struct inode *olddir, struct dentry *oldent,
 			fuse_update_ctime(d_inode(newent));
 		}
                 //Nubia FileObserver Begin
+#ifdef CONFIG_FUSE_FS_FILE_OBSERVER
                 fuse_post_file_rename(olddir, oldent, newdir, newent);
+#endif
                 //Nubia FileObserver End
 	} else if (err == -EINTR) {
 		/* If request was interrupted, DEITY only knows if the
