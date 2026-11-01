@@ -731,6 +731,8 @@ static ssize_t drv2605_vib_level_store(struct device *dev,
 
 	vibe_strength = val;
 
+	drv2605_set_rtp_val(pDRV2605data, vibe_strength);
+
 	return strnlen(buf, count);
 }
 
