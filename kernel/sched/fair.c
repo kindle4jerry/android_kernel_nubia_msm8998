@@ -11880,15 +11880,6 @@ static inline int _nohz_kick_needed_hmp(struct rq *rq, int cpu, int *type)
 static inline int _nohz_kick_needed(struct rq *rq, int cpu, int *type)
 {
 	unsigned long now = jiffies;
-	cpumask_t cpumask;
-
-	/*
-	 * None are in tickless mode and hence no need for NOHZ idle load
-	 * balancing.
-	 */
-	cpumask_andnot(&cpumask, nohz.idle_cpus_mask, cpu_isolated_mask);
-	if (cpumask_empty(&cpumask))
-		return 0;
 
 #ifdef CONFIG_SCHED_HMP
 	return _nohz_kick_needed_hmp(rq, cpu, type);
@@ -11928,6 +11919,7 @@ static inline bool nohz_kick_needed(struct rq *rq, int *type)
 #endif
 	int cpu = rq->cpu;
 	bool kick = false;
+	cpumask_t cpumask;
 
 	if (unlikely(rq->idle_balance))
 		return false;
@@ -11938,6 +11930,14 @@ static inline bool nohz_kick_needed(struct rq *rq, int *type)
 	*/
 	set_cpu_sd_state_busy();
 	nohz_balance_exit_idle(cpu);
+
+	/*
+	 * None are in tickless mode and hence no need for NOHZ idle load
+	 * balancing.
+	 */
+	cpumask_andnot(&cpumask, nohz.idle_cpus_mask, cpu_isolated_mask);
+	if (cpumask_empty(&cpumask))
+		return false;
 
 	if (_nohz_kick_needed(rq, cpu, type))
 		return true;
@@ -11966,7 +11966,7 @@ static inline bool nohz_kick_needed(struct rq *rq, int *type)
 	}
 
 	sd = rcu_dereference(per_cpu(sd_asym, cpu));
-	if (sd && (cpumask_first_and(nohz.idle_cpus_mask,
+	if (sd && (cpumask_first_and(&cpumask,
 				  sched_domain_span(sd)) < cpu)) {
 		kick = true;
 		goto unlock;
