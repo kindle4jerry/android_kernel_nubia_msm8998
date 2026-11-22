@@ -793,6 +793,7 @@ static int32_t msm_actuator_move_focus(
 #endif
 #endif
 
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
 	if ((SENSOR_SUPPORT_OIS_FLAG) && (!strcmp(a_ctrl->pdev->name, "ca0c000.qcom,cci:qcom,actuator@0"))) {
 		if (target_step_pos > 0) {
 			origin_total = ((a_ctrl->total_steps * 100) / OIS_FACTOR1);
@@ -806,6 +807,7 @@ static int32_t msm_actuator_move_focus(
 			msm_ois_shift_gain(distance);
 		}
 	}
+#endif
 	CDBG("Exit\n");
 
 	return rc;
