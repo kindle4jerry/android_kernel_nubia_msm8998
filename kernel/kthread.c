@@ -782,8 +782,6 @@ static void kthread_insert_work(struct kthread_worker *worker,
 
 	trace_sched_kthread_work_queue_work(worker, work);
 
-	trace_sched_kthread_work_queue_work(worker, work);
-
 	list_add_tail(&work->node, pos);
 	work->worker = worker;
 	if (!worker->current_work && likely(worker->task))
