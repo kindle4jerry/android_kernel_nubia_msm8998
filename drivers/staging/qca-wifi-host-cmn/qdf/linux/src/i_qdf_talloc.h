@@ -38,6 +38,13 @@
 #define __zalloc_auto(size) \
 	kmalloc(size, __can_sleep() ? GFP_KERNEL : GFP_ATOMIC)
 
+/* The kernel (>= backported cleanup.h) defines __free(_name) for scope
+ * based cleanup. WLAN's allocator wrapper wants __free(ptr); drop the
+ * kernel definition for this translation unit to avoid a macro clash.
+ */
+#ifdef __free
+#undef __free
+#endif
 #define __free(ptr) kfree(ptr)
 
 #define __alloc_size(ptr) ksize(ptr)
