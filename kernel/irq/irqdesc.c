@@ -98,7 +98,6 @@ static void desc_set_defaults(unsigned int irq, struct irq_desc *desc, int node,
 	desc->depth = 1;
 	desc->irq_count = 0;
 	desc->irqs_unhandled = 0;
-	desc->tot_count = 0;
 	desc->name = NULL;
 	desc->owner = owner;
 	for_each_possible_cpu(cpu)
@@ -199,7 +198,9 @@ static void free_desc(unsigned int irq)
 	 * sparse tree we can free it. Access in proc will fail to
 	 * lookup the descriptor.
 	 */
+	mutex_lock(&sparse_irq_lock);
 	delete_irq_desc(irq);
+	mutex_unlock(&sparse_irq_lock);
 
 	free_masks(desc);
 	free_percpu(desc->kstat_irqs);
@@ -216,14 +217,19 @@ static int alloc_descs(unsigned int start, unsigned int cnt, int node,
 		desc = alloc_desc(start + i, node, owner);
 		if (!desc)
 			goto err;
+		mutex_lock(&sparse_irq_lock);
 		irq_insert_desc(start + i, desc);
+		mutex_unlock(&sparse_irq_lock);
 	}
-	bitmap_set(allocated_irqs, start, cnt);
 	return start;
 
 err:
 	for (i--; i >= 0; i--)
 		free_desc(start + i);
+
+	mutex_lock(&sparse_irq_lock);
+	bitmap_clear(allocated_irqs, start, cnt);
+	mutex_unlock(&sparse_irq_lock);
 	return -ENOMEM;
 }
 
@@ -321,7 +327,6 @@ static inline int alloc_descs(unsigned int start, unsigned int cnt, int node,
 
 		desc->owner = owner;
 	}
-	bitmap_set(allocated_irqs, start, cnt);
 	return start;
 }
 
@@ -426,10 +431,10 @@ void irq_free_descs(unsigned int from, unsigned int cnt)
 	if (from >= nr_irqs || (from + cnt) > nr_irqs)
 		return;
 
-	mutex_lock(&sparse_irq_lock);
 	for (i = 0; i < cnt; i++)
 		free_desc(from + i);
 
+	mutex_lock(&sparse_irq_lock);
 	bitmap_clear(allocated_irqs, from, cnt);
 	mutex_unlock(&sparse_irq_lock);
 }
@@ -473,15 +478,19 @@ __irq_alloc_descs(int irq, unsigned int from, unsigned int cnt, int node,
 					   from, cnt, 0);
 	ret = -EEXIST;
 	if (irq >=0 && start != irq)
-		goto unlock;
+		goto err;
 
 	if (start + cnt > nr_irqs) {
 		ret = irq_expand_nr_irqs(start + cnt);
 		if (ret)
-			goto unlock;
+			goto err;
 	}
-	ret = alloc_descs(start, cnt, node, owner);
-unlock:
+
+	bitmap_set(allocated_irqs, start, cnt);
+	mutex_unlock(&sparse_irq_lock);
+	return alloc_descs(start, cnt, node, owner);
+
+err:
 	mutex_unlock(&sparse_irq_lock);
 	return ret;
 }
@@ -632,15 +641,11 @@ unsigned int kstat_irqs_cpu(unsigned int irq, int cpu)
 unsigned int kstat_irqs(unsigned int irq)
 {
 	struct irq_desc *desc = irq_to_desc(irq);
-	unsigned int sum = 0;
 	int cpu;
+	unsigned int sum = 0;
 
 	if (!desc || !desc->kstat_irqs)
 		return 0;
-	if (!irq_settings_is_per_cpu_devid(desc) &&
-	    !irq_settings_is_per_cpu(desc))
-	    return desc->tot_count;
-
 	for_each_possible_cpu(cpu)
 		sum += *per_cpu_ptr(desc->kstat_irqs, cpu);
 	return sum;

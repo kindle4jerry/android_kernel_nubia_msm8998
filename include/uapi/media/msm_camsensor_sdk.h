@@ -5,7 +5,7 @@
 
 #define KVERSION 0x1
 
-#define MAX_POWER_CONFIG      16 //ZTEMT: li.bin1 modify it
+#define MAX_POWER_CONFIG      12
 #define GPIO_OUT_LOW          (0 << 1)
 #define GPIO_OUT_HIGH         (1 << 1)
 #define CSI_EMBED_DATA        0x12
@@ -176,6 +176,9 @@ enum msm_actuator_write_type {
 enum msm_actuator_i2c_operation {
 	MSM_ACT_WRITE = 0,
 	MSM_ACT_POLL,
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
+	MSM_ACT_POLL_RESULT,
+#endif
 };
 
 enum actuator_type {
@@ -198,12 +201,6 @@ enum msm_flash_cfg_type_t {
 	CFG_FLASH_OFF,
 	CFG_FLASH_LOW,
 	CFG_FLASH_HIGH,
-    //ZTEMT: added by congshan for front camera flash start
-	CFG_LCD_BKL_NORM,
-	CFG_LCD_BKL_LOW,
-	CFG_LCD_BKL_HIGH,
-	CFG_LCD_BKL_SET,
-	//ZTEMT: added by congshan for front camera flash end
 };
 
 enum msm_ir_led_cfg_type_t {
@@ -270,20 +267,6 @@ struct msm_sensor_i2c_sync_params {
 	unsigned short line;
 	unsigned short delay;
 };
-
-/*ZTEMT: fengxun add for AL3200--------Start*/
-struct msm_camera_spi_reg_setting{
-	uint16_t opcode;
-	uint32_t size;
-	uint8_t *param;
-};
-
-struct msm_camera_spi_reg_setting32{
-	uint16_t opcode;
-	uint32_t size;
-	uint32_t param;
-};
-/*ZTEMT: fengxun add for AL3200--------End*/
 
 struct msm_camera_reg_settings_t {
 	uint16_t reg_addr;

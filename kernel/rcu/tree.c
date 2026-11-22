@@ -377,21 +377,6 @@ void rcu_all_qs(void)
 		rcu_momentary_dyntick_idle();
 		local_irq_restore(flags);
 	}
-	if (unlikely(raw_cpu_read(rcu_sched_data.cpu_no_qs.b.exp))) {
-		/*
-		 * Yes, we just checked a per-CPU variable with preemption
-		 * enabled, so we might be migrated to some other CPU at
-		 * this point.  That is OK because in that case, the
-		 * migration will supply the needed quiescent state.
-		 * We might end up needlessly disabling preemption and
-		 * invoking rcu_sched_qs() on the destination CPU, but
-		 * the probability and cost are both quite low, so this
-		 * should not be a problem in practice.
-		 */
-		preempt_disable();
-		rcu_sched_qs();
-		preempt_enable();
-	}
 	this_cpu_inc(rcu_qs_ctr);
 	barrier(); /* Avoid RCU read-side critical sections leaking up. */
 }
@@ -588,7 +573,7 @@ static int
 cpu_has_callbacks_ready_to_invoke(struct rcu_data *rdp)
 {
 	return &rdp->nxtlist != rdp->nxttail[RCU_DONE_TAIL] &&
-	       rdp->nxttail[RCU_NEXT_TAIL] != NULL;
+	       rdp->nxttail[RCU_DONE_TAIL] != NULL;
 }
 
 /*
@@ -1186,15 +1171,14 @@ static int rcu_implicit_dynticks_qs(struct rcu_data *rdp,
 			smp_mb(); /* ->cond_resched_completed before *rcrmp. */
 			WRITE_ONCE(*rcrmp,
 				   READ_ONCE(*rcrmp) + rdp->rsp->flavor_mask);
+			resched_cpu(rdp->cpu);  /* Force CPU into scheduler. */
+			rdp->rsp->jiffies_resched += 5; /* Enable beating. */
+		} else if (ULONG_CMP_GE(jiffies, rdp->rsp->jiffies_resched)) {
+			/* Time to beat on that CPU again! */
+			resched_cpu(rdp->cpu);  /* Force CPU into scheduler. */
+			rdp->rsp->jiffies_resched += 5; /* Re-enable beating. */
 		}
-		rdp->rsp->jiffies_resched += 5; /* Re-enable beating. */
 	}
-
-	/* And if it has been a really long time, kick the CPU as well. */
-	if (ULONG_CMP_GE(jiffies,
-			 rdp->rsp->gp_start + 2 * jiffies_till_sched_qs) ||
-	    ULONG_CMP_GE(jiffies, rdp->rsp->gp_start + jiffies_till_sched_qs))
-		resched_cpu(rdp->cpu);  /* Force CPU into scheduler. */
 
 	return 0;
 }
@@ -1651,7 +1635,7 @@ static int rcu_future_gp_cleanup(struct rcu_state *rsp, struct rcu_node *rnp)
 static void rcu_gp_kthread_wake(struct rcu_state *rsp)
 {
 	if ((current == rsp->gp_kthread &&
-	     !in_irq() && !in_serving_softirq()) ||
+	     !in_interrupt() && !in_serving_softirq()) ||
 	    !READ_ONCE(rsp->gp_flags) ||
 	    !rsp->gp_kthread)
 		return;
@@ -2419,7 +2403,6 @@ rcu_report_qs_rdp(int cpu, struct rcu_state *rsp, struct rcu_data *rdp)
 	}
 	mask = rdp->grpmask;
 	if ((rnp->qsmask & mask) == 0) {
-		rdp->core_needs_qs = 0;
 		raw_spin_unlock_irqrestore(&rnp->lock, flags);
 	} else {
 		rdp->core_needs_qs = 0;
@@ -3654,7 +3637,7 @@ static bool sync_exp_work_done(struct rcu_state *rsp, struct rcu_node *rnp,
  */
 static struct rcu_node *exp_funnel_lock(struct rcu_state *rsp, unsigned long s)
 {
-	struct rcu_data *rdp = per_cpu_ptr(rsp->rda, raw_smp_processor_id());
+	struct rcu_data *rdp;
 	struct rcu_node *rnp0;
 	struct rcu_node *rnp1 = NULL;
 
@@ -3668,7 +3651,7 @@ static struct rcu_node *exp_funnel_lock(struct rcu_state *rsp, unsigned long s)
 	if (!mutex_is_locked(&rnp0->exp_funnel_mutex)) {
 		if (mutex_trylock(&rnp0->exp_funnel_mutex)) {
 			if (sync_exp_work_done(rsp, rnp0, NULL,
-					       &rdp->expedited_workdone0, s))
+					       &rsp->expedited_workdone0, s))
 				return NULL;
 			return rnp0;
 		}
@@ -3682,13 +3665,14 @@ static struct rcu_node *exp_funnel_lock(struct rcu_state *rsp, unsigned long s)
 	 * can be inexact, as it is just promoting locality and is not
 	 * strictly needed for correctness.
 	 */
-	if (sync_exp_work_done(rsp, NULL, NULL, &rdp->expedited_workdone1, s))
+	rdp = per_cpu_ptr(rsp->rda, raw_smp_processor_id());
+	if (sync_exp_work_done(rsp, NULL, NULL, &rsp->expedited_workdone1, s))
 		return NULL;
 	mutex_lock(&rdp->exp_funnel_mutex);
 	rnp0 = rdp->mynode;
 	for (; rnp0 != NULL; rnp0 = rnp0->parent) {
 		if (sync_exp_work_done(rsp, rnp1, rdp,
-				       &rdp->expedited_workdone2, s))
+				       &rsp->expedited_workdone2, s))
 			return NULL;
 		mutex_lock(&rnp0->exp_funnel_mutex);
 		if (rnp1)
@@ -3698,7 +3682,7 @@ static struct rcu_node *exp_funnel_lock(struct rcu_state *rsp, unsigned long s)
 		rnp1 = rnp0;
 	}
 	if (sync_exp_work_done(rsp, rnp1, rdp,
-			       &rdp->expedited_workdone3, s))
+			       &rsp->expedited_workdone3, s))
 		return NULL;
 	return rnp1;
 }
@@ -3890,10 +3874,6 @@ void synchronize_sched_expedited(void)
 	unsigned long s;
 	struct rcu_node *rnp;
 	struct rcu_state *rsp = &rcu_sched_state;
-
-	/* If only one CPU, this is automatically a grace period. */
-	if (rcu_blocking_is_gp())
-		return;
 
 	/* Take a snapshot of the sequence number.  */
 	s = rcu_exp_gp_seq_snap(rsp);

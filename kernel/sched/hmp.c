@@ -228,7 +228,7 @@ unsigned int min_possible_efficiency = UINT_MAX;
 
 unsigned long __weak arch_get_cpu_efficiency(int cpu)
 {
-	return SCHED_CAPACITY_SCALE;
+	return SCHED_LOAD_SCALE;
 }
 
 /* Keep track of max/min capacity possible across CPUs "currently" */
@@ -237,11 +237,7 @@ static void __update_min_max_capacity(void)
 	int i;
 	int max_cap = 0, min_cap = INT_MAX;
 
-	for_each_possible_cpu(i) {
-
-		if (!cpu_active(i))
-			continue;
-
+	for_each_online_cpu(i) {
 		max_cap = max(max_cap, cpu_capacity(i));
 		min_cap = min(min_cap, cpu_capacity(i));
 	}
@@ -250,7 +246,7 @@ static void __update_min_max_capacity(void)
 	min_capacity = min_cap;
 }
 
-void update_min_max_capacity(void)
+static void update_min_max_capacity(void)
 {
 	unsigned long flags;
 	int i;
@@ -1554,8 +1550,8 @@ void free_task_load_ptrs(struct task_struct *p)
 void init_new_task_load(struct task_struct *p)
 {
 	int i;
-	u32 init_load_windows;
-	u32 init_load_pct;
+	u32 init_load_windows = sched_init_task_load_windows;
+	u32 init_load_pct = current->init_load_pct;
 
 	p->init_load_pct = 0;
 	rcu_assign_pointer(p->grp, NULL);
@@ -1578,13 +1574,9 @@ void init_new_task_load(struct task_struct *p)
 	/* Don't have much choice. CPU frequency would be bogus */
 	BUG_ON(!p->ravg.curr_window_cpu || !p->ravg.prev_window_cpu);
 
-	if (current->init_load_pct)
-		init_load_pct = current->init_load_pct;
-	else
-		init_load_pct = sysctl_sched_init_task_load_pct;
-
-	init_load_windows = div64_u64((u64)init_load_pct *
-				(u64)sched_ravg_window, 100);
+	if (init_load_pct)
+		init_load_windows = div64_u64((u64)init_load_pct *
+			  (u64)sched_ravg_window, 100);
 
 	p->ravg.demand = init_load_windows;
 	p->ravg.pred_demand = 0;
@@ -2948,13 +2940,6 @@ void sched_account_irqstart(int cpu, struct task_struct *curr, u64 wallclock)
 	if (!rq->window_start || sched_disable_window_stats)
 		return;
 
-	/*
-	 * We don’t have to note down an irqstart event when cycle
-	 * counter is not used.
-	 */
-	if (!use_cycle_counter)
-		return;
-
 	if (is_idle_task(curr)) {
 		/* We're here without rq->lock held, IRQ disabled */
 		raw_spin_lock(&rq->lock);
@@ -3010,11 +2995,11 @@ void set_window_start(struct rq *rq)
 {
 	static int sync_cpu_available;
 
-	if (likely(rq->window_start))
+	if (rq->window_start)
 		return;
 
 	if (!sync_cpu_available) {
-		rq->window_start = 1;
+		rq->window_start = sched_ktime_clock();
 		sync_cpu_available = 1;
 	} else {
 		struct rq *sync_rq = cpu_rq(cpumask_any(cpu_online_mask));
@@ -3942,9 +3927,9 @@ err:
 static void remove_task_from_group(struct task_struct *p)
 {
 	struct related_thread_group *grp = p->grp;
+	struct rq_flags rf;
 	struct rq *rq;
 	int empty_group = 1;
-	struct rq_flags rf;
 
 	raw_spin_lock(&grp->lock);
 
@@ -3973,8 +3958,8 @@ static void remove_task_from_group(struct task_struct *p)
 static int
 add_task_to_group(struct task_struct *p, struct related_thread_group *grp)
 {
-	struct rq *rq;
 	struct rq_flags rf;
+	struct rq *rq;
 
 	raw_spin_lock(&grp->lock);
 

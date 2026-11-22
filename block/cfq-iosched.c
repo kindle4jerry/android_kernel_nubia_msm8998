@@ -657,20 +657,17 @@ static inline void cfqg_put(struct cfq_group *cfqg)
 }
 
 #define cfq_log_cfqq(cfqd, cfqq, fmt, args...)	do {			\
-	char __pbuf[128];						\
-									\
-	blkg_path(cfqg_to_blkg((cfqq)->cfqg), __pbuf, sizeof(__pbuf));	\
-	blk_add_trace_msg((cfqd)->queue, "cfq%d%c%c %s " fmt, (cfqq)->pid, \
+	blk_add_cgroup_trace_msg((cfqd)->queue,				\
+			cfqg_to_blkg((cfqq)->cfqg)->blkcg,		\
+			"cfq%d%c%c " fmt, (cfqq)->pid,			\
 			cfq_cfqq_sync((cfqq)) ? 'S' : 'A',		\
 			cfqq_type((cfqq)) == SYNC_NOIDLE_WORKLOAD ? 'N' : ' ',\
-			  __pbuf, ##args);				\
+			  ##args);					\
 } while (0)
 
 #define cfq_log_cfqg(cfqd, cfqg, fmt, args...)	do {			\
-	char __pbuf[128];						\
-									\
-	blkg_path(cfqg_to_blkg(cfqg), __pbuf, sizeof(__pbuf));		\
-	blk_add_trace_msg((cfqd)->queue, "%s " fmt, __pbuf, ##args);	\
+	blk_add_cgroup_trace_msg((cfqd)->queue,				\
+			cfqg_to_blkg(cfqg)->blkcg, fmt, ##args);	\
 } while (0)
 
 static inline void cfqg_stats_update_io_add(struct cfq_group *cfqg,
@@ -701,15 +698,14 @@ static inline void cfqg_stats_update_io_merged(struct cfq_group *cfqg, int rw)
 }
 
 static inline void cfqg_stats_update_completion(struct cfq_group *cfqg,
-						u64 start_time_ns,
-						u64 io_start_time_ns,
-						int rw)
+			u64 start_time_ns, u64 io_start_time_ns, int rw)
 {
 	struct cfqg_stats *stats = &cfqg->stats;
 	u64 now = ktime_get_ns();
 
 	if (now > io_start_time_ns)
-		blkg_rwstat_add(&stats->service_time, rw, now - io_start_time_ns);
+		blkg_rwstat_add(&stats->service_time, rw,
+				now - io_start_time_ns);
 	if (io_start_time_ns > start_time_ns)
 		blkg_rwstat_add(&stats->wait_time, rw,
 				io_start_time_ns - start_time_ns);
@@ -796,9 +792,7 @@ static inline void cfqg_stats_update_timeslice_used(struct cfq_group *cfqg,
 static inline void cfqg_stats_update_io_remove(struct cfq_group *cfqg, int rw) { }
 static inline void cfqg_stats_update_io_merged(struct cfq_group *cfqg, int rw) { }
 static inline void cfqg_stats_update_completion(struct cfq_group *cfqg,
-						u64 start_time_ns,
-						u64 io_start_time_ns,
-						int rw) { }
+			u64 start_time_ns, u64 io_start_time_ns, int rw) { }
 
 #endif	/* CONFIG_CFQ_GROUP_IOSCHED */
 
@@ -3732,6 +3726,7 @@ static void cfq_init_prio_data(struct cfq_queue *cfqq, struct cfq_io_cq *cic)
 	switch (ioprio_class) {
 	default:
 		printk(KERN_ERR "cfq: bad prio %x\n", ioprio_class);
+		/* fall through */
 	case IOPRIO_CLASS_NONE:
 		/*
 		 * no prio set, inherit CPU scheduling settings
@@ -3907,8 +3902,6 @@ cfq_get_queue(struct cfq_data *cfqd, bool is_sync, struct cfq_io_cq *cic,
 		goto out;
 	}
 
-	/* cfq_init_cfqq() assumes cfqq->ioprio_class is initialized. */
-	cfqq->ioprio_class = IOPRIO_CLASS_NONE;
 	cfq_init_cfqq(cfqd, cfqq, current->pid, is_sync);
 	cfq_init_prio_data(cfqq, cic);
 	cfq_link_cfqq_cfqg(cfqq, cfqg);
@@ -4932,9 +4925,8 @@ static int __init cfq_init(void)
 	ret = blkcg_policy_register(&blkcg_policy_cfq);
 	if (ret)
 		return ret;
-#else
-	cfq_group_idle = 0;
 #endif
+	cfq_group_idle = 0;
 
 	ret = -ENOMEM;
 	cfq_pool = KMEM_CACHE(cfq_queue, 0);

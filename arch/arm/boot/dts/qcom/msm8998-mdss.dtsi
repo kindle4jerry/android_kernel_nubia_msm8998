@@ -274,13 +274,11 @@
 		mdss_fb2: qcom,mdss_fb_hdmi {
 			cell-index = <2>;
 			compatible = "qcom,mdss-fb";
-			status = "disabled";
 			qcom,mdss-intf = <&mdss_hdmi_tx>;
 		};
 
 		mdss_fb3: qcom,mdss_fb_dp {
 			cell-index = <3>;
-			status = "disabled";
 			compatible = "qcom,mdss-fb";
 			qcom,mdss-intf = <&mdss_dp_ctrl>;
 		};
@@ -415,7 +413,6 @@
 
 		mdss_dsi1: qcom,mdss_dsi_ctrl1@c996000 {
 			compatible = "qcom,mdss-dsi-ctrl";
-			status = "disabled";
 			label = "MDSS DSI CTRL->1";
 			cell-index = <1>;
 			reg =	<0xc996000 0x400>,
@@ -473,7 +470,6 @@
 
 	mdss_dp_ctrl: qcom,dp_ctrl@c990000 {
 		cell-index = <0>;
-		status = "disabled";
 		compatible = "qcom,mdss-dp";
 		qcom,mdss-fb-map = <&mdss_fb3>;
 
@@ -643,7 +639,6 @@
 	mdss_hdmi_tx: qcom,hdmi_tx@c9a0000 {
 		cell-index = <0>;
 		compatible = "qcom,hdmi-tx";
-		status = "disabled";
 
 		reg =	<0xc9a0000 0x50c>,
 			<0x780000 0x621c>,

@@ -190,12 +190,6 @@ struct msm_port {
 	bool			break_detected;
 	struct msm_dma		tx_dma;
 	struct msm_dma		rx_dma;
-	// Nubia add start
-	bool use_pinctrl;
-	struct pinctrl *pinctrl;
-	struct pinctrl_state *pinctrl_active;
-	struct pinctrl_state *pinctrl_sleep;
-	// Nubia add end
 };
 
 #define UART_TO_MSM(uart_port)	container_of(uart_port, struct msm_port, uart)
@@ -1611,6 +1605,7 @@ static inline struct uart_port *msm_get_port_from_line(unsigned int line)
 static void __msm_console_write(struct uart_port *port, const char *s,
 				unsigned int count, bool is_uartdm)
 {
+	unsigned long flags;
 	int i;
 	int num_newlines = 0;
 	bool replaced = false;
@@ -1627,6 +1622,8 @@ static void __msm_console_write(struct uart_port *port, const char *s,
 		if (s[i] == '\n')
 			num_newlines++;
 	count += num_newlines;
+
+	local_irq_save(flags);
 
 	if (port->sysrq)
 		locked = 0;
@@ -1675,6 +1672,8 @@ static void __msm_console_write(struct uart_port *port, const char *s,
 
 	if (locked)
 		spin_unlock(&port->lock);
+
+	local_irq_restore(flags);
 }
 
 static void msm_console_write(struct console *co, const char *s,
@@ -1793,56 +1792,7 @@ static const struct of_device_id msm_uartdm_table[] = {
 	{ .compatible = "qcom,msm-uartdm-v1.4", .data = (void *)UARTDM_1P4 },
 	{ }
 };
-// Nubia add start
-static int msm_serial_pinctrl_init(struct uart_port *uport)
-{
-	struct pinctrl_state *set_state;
-	struct msm_port *msm_uport = UART_TO_MSM(uport);
 
-	msm_uport->pinctrl = devm_pinctrl_get(uport->dev);
-	if (IS_ERR_OR_NULL(msm_uport->pinctrl)) {
-		pr_err("%s(): Pinctrl not defined", __func__);
-	} else {
-		pr_err("%s(): Using Pinctrl", __func__);
-		set_state = pinctrl_lookup_state(msm_uport->pinctrl,
-						PINCTRL_STATE_DEFAULT);
-		if (IS_ERR_OR_NULL(set_state)) {
-			dev_err(uport->dev,
-				"pinctrl lookup failed for active state");
-			goto pinctrl_fail;
-		}
-		msm_uport->pinctrl_active= set_state;
-		set_state = pinctrl_lookup_state(msm_uport->pinctrl,
-						PINCTRL_STATE_SLEEP);
-		if (IS_ERR_OR_NULL(set_state)) {
-			dev_err(uport->dev,
-				"pinctrl lookup failed for sleep state");
-			goto pinctrl_fail;
-		}
-		msm_uport->pinctrl_sleep= set_state;
-		msm_uport->use_pinctrl = true;
-		return 0;
-	}
-pinctrl_fail:
-	msm_uport->pinctrl = NULL;
-	msm_uport->use_pinctrl = false;
-	return -1;
-}
-static int msm_serial_pinctrl_set(struct uart_port *uport, bool flag){
-	struct msm_port *msm_uport = UART_TO_MSM(uport);
-	int ret=-1;
-	if(!IS_ERR_OR_NULL(msm_uport->pinctrl)){
-		if(flag){
-			ret=pinctrl_select_state(msm_uport->pinctrl, msm_uport->pinctrl_active);
-			if (ret) pr_err("%s(): Error selecting active state\n",__func__);
-		}else{
-			ret=pinctrl_select_state(msm_uport->pinctrl, msm_uport->pinctrl_sleep);
-			if (ret) pr_err("%s(): Error selecting sleep state\n",__func__);
-		}
-	}
-	return ret;
-}
-// Nubia add end
 static int msm_serial_probe(struct platform_device *pdev)
 {
 	struct msm_port *msm_port;
@@ -1850,9 +1800,6 @@ static int msm_serial_probe(struct platform_device *pdev)
 	struct uart_port *port;
 	const struct of_device_id *id;
 	int irq, line;
-	// Nubia add start
-	int ret;
-	// Nubia add end
 
 	if (pdev->dev.of_node)
 		line = of_alias_get_id(pdev->dev.of_node, "serial");
@@ -1869,17 +1816,7 @@ static int msm_serial_probe(struct platform_device *pdev)
 
 	port = msm_get_port_from_line(line);
 	port->dev = &pdev->dev;
-	// Nubia add start
-	msm_serial_pinctrl_init(port);
 	msm_port = UART_TO_MSM(port);
-	// Nubia add start
-	if(msm_port->use_pinctrl) {
-		ret = msm_serial_pinctrl_set(port,true);
-		if (ret !=0) {
-			pr_err("%s(): Error setting initial pinctrl state",__func__);
-		}
-	}
-	// Nubia add end
 
 	id = of_match_device(msm_uartdm_table, &pdev->dev);
 	if (id)
@@ -1935,17 +1872,7 @@ MODULE_DEVICE_TABLE(of, msm_match_table);
 static int msm_serial_suspend(struct device *dev)
 {
 	struct uart_port *port = dev_get_drvdata(dev);
-	// Nubia add start
-	int ret;
-	struct msm_port *msm_port;
 
-	msm_port=UART_TO_MSM(port);
-	if (msm_port->use_pinctrl) {
-		ret =msm_serial_pinctrl_set(port, false);
-		if (ret)
-			pr_err("%s(): Error setting suspend pinctrl state",__func__);
-	}
-	// Nubia add end
 	uart_suspend_port(&msm_uart_driver, port);
 
 	return 0;
@@ -1954,17 +1881,7 @@ static int msm_serial_suspend(struct device *dev)
 static int msm_serial_resume(struct device *dev)
 {
 	struct uart_port *port = dev_get_drvdata(dev);
-	// Nubia add start
-	int ret;
-	struct msm_port *msm_port;
 
-	msm_port=UART_TO_MSM(port);
-	if (msm_port->use_pinctrl) {
-		ret =msm_serial_pinctrl_set(port, true);
-		if (ret)
-			pr_err("%s(): Error setting active pinctrl state",__func__);
-	}
-	// Nubia add end
 	uart_resume_port(&msm_uart_driver, port);
 
 	return 0;

@@ -42,29 +42,19 @@
 #define OCP_ATTEMPT 20
 #define HS_DETECT_PLUG_TIME_MS (3 * 1000)
 #define SPECIAL_HS_DETECT_TIME_MS (2 * 1000)
-#ifdef CONFIG_ZTEMT_AUDIO
-#define MBHC_BUTTON_PRESS_THRESHOLD_MIN 800
-#else
 #define MBHC_BUTTON_PRESS_THRESHOLD_MIN 250
-#endif
 #define GND_MIC_SWAP_THRESHOLD 4
 #define WCD_FAKE_REMOVAL_MIN_PERIOD_MS 100
-#ifdef CONFIG_ZTEMT_AUDIO
-#define HS_VREF_MIN_VAL 1300
-#else
 #define HS_VREF_MIN_VAL 1400
-#endif
 #define FW_READ_ATTEMPTS 15
 #define FW_READ_TIMEOUT 4000000
 #define FAKE_REM_RETRY_ATTEMPTS 3
 #define MAX_IMPED 60000
 
-#define WCD_MBHC_BTN_PRESS_COMPL_TIMEOUT_MS  200
-#define WCD_MBHC_BTN_PRESS_COMPL_TIMEOUT_MS1  700   //nubia modify the headset detect error of ffbm
+#define WCD_MBHC_BTN_PRESS_COMPL_TIMEOUT_MS  50
 #define ANC_DETECT_RETRY_CNT 7
 #define WCD_MBHC_SPL_HS_CNT  1
 
-int headphone_to_headset_flag;
 static int det_extn_cable_en;
 module_param(det_extn_cable_en, int,
 		S_IRUGO | S_IWUSR | S_IWGRP);
@@ -255,7 +245,9 @@ static int wcd_event_notify(struct notifier_block *self, unsigned long val,
 	struct snd_soc_codec *codec = mbhc->codec;
 	bool micbias2 = false;
 	bool micbias1 = false;
+#ifndef CONFIG_MACH_XIAOMI_MSM8998
 	u8 fsm_en = 0;
+#endif
 
 	pr_debug("%s: event %s (%d)\n", __func__,
 		 wcd_mbhc_get_event_string(event), event);
@@ -297,10 +289,12 @@ static int wcd_event_notify(struct notifier_block *self, unsigned long val,
 out_micb_en:
 		/* Disable current source if micbias enabled */
 		if (mbhc->mbhc_cb->mbhc_micbias_control) {
+#ifndef CONFIG_MACH_XIAOMI_MSM8998
 			WCD_MBHC_REG_READ(WCD_MBHC_FSM_EN, fsm_en);
 			if (fsm_en)
 				WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_BTN_ISRC_CTL,
 							 0);
+#endif
 		} else {
 			mbhc->is_hs_recording = true;
 			wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_MB);
@@ -310,6 +304,7 @@ out_micb_en:
 			mbhc->mbhc_cb->set_cap_mode(codec, micbias1, true);
 		break;
 	case WCD_EVENT_PRE_MICBIAS_2_OFF:
+#ifndef CONFIG_MACH_XIAOMI_MSM8998
 		/*
 		 * Before MICBIAS_2 is turned off, if FSM is enabled,
 		 * make sure current source is enabled so as to detect
@@ -322,6 +317,7 @@ out_micb_en:
 				WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_BTN_ISRC_CTL,
 							 3);
 		}
+#endif
 		break;
 	/* MICBIAS usage change */
 	case WCD_EVENT_POST_DAPM_MICBIAS_2_OFF:
@@ -667,7 +663,6 @@ static void wcd_mbhc_report_plug(struct wcd_mbhc *mbhc, int insertion,
 		hphrocp_off_report(mbhc, SND_JACK_OC_HPHR);
 		hphlocp_off_report(mbhc, SND_JACK_OC_HPHL);
 		mbhc->current_plug = MBHC_PLUG_TYPE_NONE;
-		mbhc->force_linein = false;
 	} else {
 		/*
 		 * Report removal of current jack type.
@@ -723,7 +718,6 @@ static void wcd_mbhc_report_plug(struct wcd_mbhc *mbhc, int insertion,
 						SND_JACK_LINEOUT |
 						SND_JACK_ANC_HEADPHONE |
 						SND_JACK_UNSUPPORTED);
-			mbhc->force_linein = false;
 		}
 
 		if (mbhc->current_plug == MBHC_PLUG_TYPE_HEADSET &&
@@ -758,7 +752,6 @@ static void wcd_mbhc_report_plug(struct wcd_mbhc *mbhc, int insertion,
 				 mbhc->zr < MAX_IMPED) &&
 				(jack_type == SND_JACK_HEADPHONE)) {
 				jack_type = SND_JACK_LINEOUT;
-				mbhc->force_linein = true;
 				mbhc->current_plug = MBHC_PLUG_TYPE_HIGH_HPH;
 				if (mbhc->hph_status) {
 					mbhc->hph_status &= ~(SND_JACK_HEADSET |
@@ -924,6 +917,12 @@ static void wcd_mbhc_find_plug_and_report(struct wcd_mbhc *mbhc,
 			/* Disable HW FSM and current source */
 			WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_FSM_EN, 0);
 			WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_BTN_ISRC_CTL, 0);
+
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
+			mbhc->mbhc_cb->mbhc_micbias_control(mbhc->codec,
+							MIC_BIAS_2, MICB_PULLUP_DISABLE);
+#endif
+
 			/* Setup for insertion detection */
 			WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_ELECT_DETECTION_TYPE,
 						 1);
@@ -1092,18 +1091,27 @@ static bool wcd_is_special_headset(struct wcd_mbhc *mbhc)
 static void wcd_mbhc_update_fsm_source(struct wcd_mbhc *mbhc,
 				       enum wcd_mbhc_plug_type plug_type)
 {
+#ifndef CONFIG_MACH_XIAOMI_MSM8998
 	bool micbias2;
 
 	micbias2 = mbhc->mbhc_cb->micbias_enable_status(mbhc,
 							MIC_BIAS_2);
+#endif
+
 	switch (plug_type) {
 	case MBHC_PLUG_TYPE_HEADPHONE:
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_BTN_ISRC_CTL, 3);
 		break;
 	case MBHC_PLUG_TYPE_HEADSET:
 	case MBHC_PLUG_TYPE_ANC_HEADPHONE:
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
+		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_BTN_ISRC_CTL, 0);
+		mbhc->mbhc_cb->mbhc_micbias_control(mbhc->codec,
+				MIC_BIAS_2, MICB_PULLUP_ENABLE);
+#else
 		if (!mbhc->is_hs_recording && !micbias2)
 			WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_BTN_ISRC_CTL, 3);
+#endif
 		break;
 	default:
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_BTN_ISRC_CTL, 0);
@@ -1215,10 +1223,10 @@ static void wcd_correct_swch_plug(struct work_struct *work)
 	bool micbias2 = false;
 	bool micbias1 = false;
 	int ret = 0;
-	int rc,rc1,spl_hs_count = 0;
+	int rc, spl_hs_count = 0;
 	int cross_conn;
 	int try = 0;
-	headphone_to_headset_flag = 1;  //not report  from headphone to headset
+
 	pr_debug("%s: enter\n", __func__);
 
 	mbhc = container_of(work, struct wcd_mbhc, correct_plug_swch);
@@ -1247,19 +1255,12 @@ static void wcd_correct_swch_plug(struct work_struct *work)
 	WCD_MBHC_REG_READ(WCD_MBHC_BTN_RESULT, btn_result);
 	WCD_MBHC_REG_READ(WCD_MBHC_HS_COMP_RESULT, hs_comp_res);
 
-	rc1 = wait_for_completion_timeout(&mbhc->btn_press_compl,
-			msecs_to_jiffies(WCD_MBHC_BTN_PRESS_COMPL_TIMEOUT_MS1));
-
-	if (!rc1) {
+	if (!rc) {
 		pr_debug("%s No btn press interrupt\n", __func__);
 		if (!btn_result && !hs_comp_res)
 			plug_type = MBHC_PLUG_TYPE_HEADSET;
 		else if (!btn_result && hs_comp_res)
-#ifdef CONFIG_ZTEMT_AUDIO
-			plug_type = MBHC_PLUG_TYPE_HEADSET;
-#else
 			plug_type = MBHC_PLUG_TYPE_HIGH_HPH;
-#endif
 		else
 			plug_type = MBHC_PLUG_TYPE_INVALID;
 	} else {
@@ -1273,7 +1274,6 @@ static void wcd_correct_swch_plug(struct work_struct *work)
 		cross_conn = wcd_check_cross_conn(mbhc);
 		try++;
 	} while (try < GND_MIC_SWAP_THRESHOLD);
-
 	/*
 	 * check for cross coneection 4 times.
 	 * conisder the result of the fourth iteration.
@@ -1282,14 +1282,11 @@ static void wcd_correct_swch_plug(struct work_struct *work)
 		pr_debug("%s: cross con found, start polling\n",
 			 __func__);
 		plug_type = MBHC_PLUG_TYPE_GND_MIC_SWAP;
-		if (mbhc->mbhc_cfg->msm_swap_set &&
-			mbhc->mbhc_cfg->msm_swap_set(codec,1,1)) {
-			pr_debug("%s: msm_swap_set to (1,1)\n", __func__);
-		}
 		pr_debug("%s: Plug found, plug type is %d\n",
 			 __func__, plug_type);
 		goto correct_plug_type;
 	}
+
 	if ((plug_type == MBHC_PLUG_TYPE_HEADSET ||
 	     plug_type == MBHC_PLUG_TYPE_HEADPHONE) &&
 	    (!wcd_swch_level_remove(mbhc))) {
@@ -1408,9 +1405,10 @@ correct_plug_type:
 				 * if switch is toggled, check again,
 				 * otherwise report unsupported plug
 				 */
-				if (mbhc->mbhc_cfg->msm_swap_set &&
-					mbhc->mbhc_cfg->msm_swap_set(codec,1,1)) {
-					pr_debug("%s: msm_swap_set to (1,1)\n", __func__);
+				if (mbhc->mbhc_cfg->swap_gnd_mic &&
+					mbhc->mbhc_cfg->swap_gnd_mic(codec)) {
+					pr_debug("%s: US_EU gpio present,flip switch\n"
+						, __func__);
 					continue;
 				}
 			}
@@ -1462,11 +1460,7 @@ correct_plug_type:
 	if (!wrk_complete && mbhc->btn_press_intr) {
 		pr_debug("%s: Can be slow insertion of headphone\n", __func__);
 		wcd_cancel_btn_work(mbhc);
-		/* Report as headphone only if previously
-		 * not reported as lineout
-		 */
-		if (!mbhc->force_linein)
-			plug_type = MBHC_PLUG_TYPE_HEADPHONE;
+		plug_type = MBHC_PLUG_TYPE_HEADPHONE;
 	}
 	/*
 	 * If plug_tye is headset, we might have already reported either in
@@ -1559,7 +1553,6 @@ exit:
 	if (mbhc->mbhc_cb->hph_pull_down_ctrl)
 		mbhc->mbhc_cb->hph_pull_down_ctrl(codec, true);
 
-	headphone_to_headset_flag =2;
 	mbhc->mbhc_cb->lock_sleep(mbhc, false);
 	pr_debug("%s: leave\n", __func__);
 }
@@ -1627,12 +1620,6 @@ static void wcd_mbhc_swch_irq_handler(struct wcd_mbhc *mbhc)
 
 	if ((mbhc->current_plug == MBHC_PLUG_TYPE_NONE) &&
 	    detection_type) {
-	       //wangchong:open switch, set 00 (default US)
-	       if (mbhc->mbhc_cfg->msm_swap_set){
-			pr_debug("%s: msm_swap_set to (0,0)\n", __func__);
-			mbhc->mbhc_cfg->msm_swap_set(codec,0,0);
-		}
-
 		/* Make sure MASTER_BIAS_CTL is enabled */
 		mbhc->mbhc_cb->mbhc_bias(codec, true);
 
@@ -1667,6 +1654,12 @@ static void wcd_mbhc_swch_irq_handler(struct wcd_mbhc *mbhc)
 		/* Disable HW FSM */
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_FSM_EN, 0);
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_BTN_ISRC_CTL, 0);
+
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
+		mbhc->mbhc_cb->mbhc_micbias_control(mbhc->codec,
+						MIC_BIAS_2, MICB_PULLUP_DISABLE);
+#endif
+
 		if (mbhc->mbhc_cb->mbhc_common_micb_ctrl)
 			mbhc->mbhc_cb->mbhc_common_micb_ctrl(codec,
 					MBHC_COMMON_MICB_TAIL_CURR, false);
@@ -1719,12 +1712,6 @@ static void wcd_mbhc_swch_irq_handler(struct wcd_mbhc *mbhc)
 						 0);
 			WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_ELECT_SCHMT_ISRC, 0);
 			wcd_mbhc_report_plug(mbhc, 0, SND_JACK_ANC_HEADPHONE);
-		}
-
-		//wangchong:close switch
-		if (mbhc->mbhc_cfg->msm_swap_set) {
-			pr_debug("%s: msm_swap_set to (0,1)\n", __func__);
-			mbhc->mbhc_cfg->msm_swap_set(codec,0,1);
 		}
 	} else if (!detection_type) {
 		/* Disable external voltage source to micbias if present */
@@ -2075,11 +2062,7 @@ static irqreturn_t wcd_mbhc_btn_press_handler(int irq, void *data)
 	mbhc->buttons_pressed |= mask;
 	mbhc->mbhc_cb->lock_sleep(mbhc, true);
 	if (schedule_delayed_work(&mbhc->mbhc_btn_dwork,
-#ifdef CONFIG_ZTEMT_AUDIO
-		msecs_to_jiffies(800)) == 0) {
-#else
-		msecs_to_jiffies(400)) == 0) {
-#endif
+				msecs_to_jiffies(400)) == 0) {
 		WARN(1, "Button pressed twice without release event\n");
 		mbhc->mbhc_cb->lock_sleep(mbhc, false);
 	}
@@ -2113,7 +2096,7 @@ static irqreturn_t wcd_mbhc_release_handler(int irq, void *data)
 	 * get btn release interrupt, so connected cable should be
 	 * headset not headphone.
 	 */
-	if ((mbhc->current_plug == MBHC_PLUG_TYPE_HEADPHONE) && (headphone_to_headset_flag ==2)) {
+	if (mbhc->current_plug == MBHC_PLUG_TYPE_HEADPHONE) {
 		wcd_mbhc_find_plug_and_report(mbhc, MBHC_PLUG_TYPE_HEADSET);
 		goto exit;
 
@@ -2251,7 +2234,9 @@ static int wcd_mbhc_initialise(struct wcd_mbhc *mbhc)
 	 * Also, disable hph_l pull-up current source as HS_DET_L is driven
 	 * by an external source
 	 */
+#ifndef CONFIG_MACH_XIAOMI_MSM8998
 	if (mbhc->mbhc_cfg->enable_usbc_analog) {
+#endif
 		mbhc->hphl_swh = 1;
 		mbhc->gnd_swh = 1;
 
@@ -2260,7 +2245,9 @@ static int wcd_mbhc_initialise(struct wcd_mbhc *mbhc)
 		else
 			WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_HS_L_DET_PULL_UP_CTRL,
 						 0);
+#ifndef CONFIG_MACH_XIAOMI_MSM8998
 	}
+#endif
 
 	WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_HPHL_PLUG_TYPE, mbhc->hphl_swh);
 	WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_GND_PLUG_TYPE, mbhc->gnd_swh);
@@ -2270,21 +2257,20 @@ static int wcd_mbhc_initialise(struct wcd_mbhc *mbhc)
 	WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_HS_L_DET_PULL_UP_COMP_CTRL, 1);
 	WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_L_DET_EN, 1);
 
+#ifndef CONFIG_MACH_XIAOMI_MSM8998
 	if (mbhc->mbhc_cfg->enable_usbc_analog) {
+#endif
 		/* Insertion debounce set to 48ms */
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_INSREM_DBNC, 4);
+#ifndef CONFIG_MACH_XIAOMI_MSM8998
 	} else {
 		/* Insertion debounce set to 96ms */
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_INSREM_DBNC, 6);
 	}
+#endif
 
-#ifdef CONFIG_ZTEMT_AUDIO
-	/* Button Debounce set to 32ms */
-	WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_BTN_DBNC, 3);
-#else
 	/* Button Debounce set to 16ms */
 	WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_BTN_DBNC, 2);
-#endif
 
 	/* Enable micbias ramp */
 	if (mbhc->mbhc_cb->mbhc_micb_ramp_control)

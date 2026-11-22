@@ -1,4 +1,5 @@
 /* Copyright (c) 2008-2020, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2019 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -32,6 +33,7 @@ struct panel_id {
 #define DEFAULT_FRAME_RATE	60
 #define DEFAULT_ROTATOR_FRAME_RATE 120
 #define ROTATOR_LOW_FRAME_RATE 30
+
 #define MDSS_DSI_MAX_ESC_CLK_RATE_HZ	19200000
 
 #define MDSS_DSI_RST_SEQ_LEN	10
@@ -781,6 +783,14 @@ struct mdss_panel_hdr_properties {
 	u32 blackness_level;
 };
 
+#ifdef CONFIG_MACH_XIAOMI
+struct mdss_panel_esd_check {
+	unsigned char check_cmd;
+	unsigned char check_value;
+	unsigned int panel_dead_report_delay;
+};
+#endif
+
 struct mdss_panel_info {
 	u32 xres;
 	u32 yres;
@@ -856,12 +866,7 @@ struct mdss_panel_info {
 	struct ion_handle *splash_ihdl;
 	int panel_power_state;
 	int compression_mode;
-#ifdef CONFIG_NUBIA_LCD_DISP_PREFERENCE
-	int panel_ready_for_cmd;
-#endif
-#ifdef CONFIG_NUBIA_LCD_BACKLIGHT_CURVE
-	uint32_t backlight_curve[256];
-#endif
+
 	uint32_t panel_dead;
 	u32 panel_force_dead;
 	u32 panel_orientation;
@@ -949,6 +954,16 @@ struct mdss_panel_info {
 
 	/* esc clk recommended for the panel */
 	u32 esc_clk_rate_hz;
+	
+#ifdef CONFIG_MACH_XIAOMI
+	u32 tp_rst_seq[MDSS_DSI_RST_SEQ_LEN];
+	u32 tp_rst_seq_len;
+	u32 esd_err_irq_gpio;
+	u32 esd_err_irq;
+	u32 esd_interrupt_flags;
+	struct mdss_panel_esd_check initial_esd_check;
+	uint32_t panel_on_dimming_delay;
+#endif
 };
 
 struct mdss_panel_timing {
@@ -1025,6 +1040,10 @@ struct mdss_panel_data {
 	bool is_te_irq_enabled;
 	struct mutex te_mutex;
 	struct completion te_done;
+	
+#ifdef CONFIG_MACH_XIAOMI
+	void (*panel_dead_report)(void);
+#endif
 };
 
 struct mdss_panel_debugfs_info {

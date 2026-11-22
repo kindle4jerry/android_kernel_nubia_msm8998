@@ -291,21 +291,6 @@ out:
 	return error;
 }
 
-#ifdef CONFIG_NUBIA_KEYBOARD_GAMESWITCH
-static void set_gameswitch(struct input_dev *input, int state) {
-	int key;
-
-	if (state)
-		key = KEY_GAMESWITCH_ON;
-	else
-		key = KEY_GAMESWITCH_OFF;
-
-	input_report_key(input, key, 1);
-	input_sync(input);
-	input_report_key(input, key, 0);
-	input_sync(input);
-}
-#endif
 #define ATTR_SHOW_FN(name, type, only_disabled)				\
 static ssize_t gpio_keys_show_##name(struct device *dev,		\
 				     struct device_attribute *attr,	\
@@ -384,9 +369,6 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 	unsigned int type = button->type ?: EV_KEY;
 	int state;
 
-#ifdef CONFIG_NUBIA_KEYBOARD_GAMESWITCH
-	static int gs_old_state;
-#endif
 	state = (__gpio_get_value(button->gpio) ? 1 : 0) ^ button->active_low;
 	if (state < 0) {
 		dev_err(input->dev.parent, "failed to get gpio state\n");
@@ -397,21 +379,9 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 		if (state)
 			input_event(input, type, button->code, button->value);
 	} else {
-#ifdef CONFIG_NUBIA_KEYBOARD_GAMESWITCH
-		if (bdata->button->code == KEY_GAME_SWITCH) {
-			if (gs_old_state == state)
-				goto gs_old;
-			set_gameswitch(input, state);
-			gs_old_state = state;
-		} else
-#endif
-			input_event(input, type, button->code, !!state);
+		input_event(input, type, button->code, !!state);
 	}
 	input_sync(input);
-#ifdef CONFIG_NUBIA_KEYBOARD_GAMESWITCH
-	gs_old:
-	pr_err("GPIO_KEY: Skipping value change\n");
-#endif
 }
 
 static void gpio_keys_gpio_work_func(struct work_struct *work)
@@ -576,11 +546,6 @@ static int gpio_keys_setup_key(struct platform_device *pdev,
 	}
 
 	input_set_capability(input, button->type ?: EV_KEY, button->code);
-
-#ifdef CONFIG_NUBIA_KEYBOARD_GAMESWITCH
-	input_set_capability(input, EV_KEY, KEY_GAMESWITCH_ON);
-	input_set_capability(input, EV_KEY, KEY_GAMESWITCH_OFF);
-#endif
 
 	/*
 	 * Install custom action to cancel release timer and

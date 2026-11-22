@@ -30,9 +30,9 @@
 #include <linux/smpboot.h>
 #include "../time/tick-internal.h"
 
-#include "../locking/rtmutex_common.h"
-
 #ifdef CONFIG_RCU_BOOST
+
+#include "../locking/rtmutex_common.h"
 
 /*
  * Control variables for per-CPU and per-rcu_node kthreads.  These
@@ -501,17 +501,16 @@ void rcu_read_unlock_special(struct task_struct *t)
 			raw_spin_unlock_irqrestore(&rnp->lock, flags);
 		}
 
+		/* Unboost if we were boosted. */
+		if (IS_ENABLED(CONFIG_RCU_BOOST) && drop_boost_mutex)
+			rt_mutex_unlock(&rnp->boost_mtx);
+
 		/*
 		 * If this was the last task on the expedited lists,
 		 * then we need to report up the rcu_node hierarchy.
 		 */
 		if (!empty_exp && empty_exp_now)
 			rcu_report_exp_rnp(rcu_state_p, rnp, true);
-
-		/* Unboost if we were boosted. */
-		if (IS_ENABLED(CONFIG_RCU_BOOST) && drop_boost_mutex)
-			rt_mutex_futex_unlock(&rnp->boost_mtx);
-
 	} else {
 		local_irq_restore(flags);
 	}

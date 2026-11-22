@@ -1,7 +1,5 @@
 #include "sched.h"
-#ifdef CONFIG_SCHED_WALT
 #include "walt.h"
-#endif
 
 /*
  * stop-task scheduling class.
@@ -63,7 +61,7 @@ check_preempt_curr_stop(struct rq *rq, struct task_struct *p, int flags)
 }
 
 static struct task_struct *
-pick_next_task_stop(struct rq *rq, struct task_struct *prev, struct pin_cookie cookie)
+pick_next_task_stop(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 {
 	struct task_struct *stop = rq->stop;
 
@@ -81,9 +79,7 @@ static void
 enqueue_task_stop(struct rq *rq, struct task_struct *p, int flags)
 {
 	add_nr_running(rq, 1);
-#ifdef CONFIG_SCHED_WALT
 	walt_inc_cumulative_runnable_avg(rq, p);
-#endif
 	inc_hmp_sched_stats_stop(rq, p);
 }
 
@@ -91,9 +87,7 @@ static void
 dequeue_task_stop(struct rq *rq, struct task_struct *p, int flags)
 {
 	sub_nr_running(rq, 1);
-#ifdef CONFIG_SCHED_WALT
 	walt_dec_cumulative_runnable_avg(rq, p);
-#endif
 	dec_hmp_sched_stats_stop(rq, p);
 }
 

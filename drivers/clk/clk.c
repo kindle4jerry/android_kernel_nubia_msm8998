@@ -2314,13 +2314,7 @@ EXPORT_SYMBOL_GPL(clk_set_flags);
 
 static struct dentry *rootdir;
 static int inited = 0;
-//Begin [0016004715 add the kernel power code,20180316]
-#ifdef CONFIG_ZTEMT_POWER_DEBUG
-static u32 debug_suspend = 1;
-#else
 static u32 debug_suspend;
-#endif //CONFIG_ZTEMT_POWER_DEBUG
-//End [0016004715 add the kernel power code,20180316]
 static DEFINE_MUTEX(clk_debug_lock);
 static HLIST_HEAD(clk_debug_list);
 
@@ -3869,6 +3863,10 @@ struct clk *__of_clk_get_from_provider(struct of_phandle_args *clkspec,
 
 	if (!clkspec)
 		return ERR_PTR(-EINVAL);
+
+	/* Check if node in clkspec is in disabled/fail state */
+	if (!of_device_is_available(clkspec->np))
+		return ERR_PTR(-ENOENT);
 
 	/* Check if we have such a provider in our array */
 	mutex_lock(&of_clk_mutex);

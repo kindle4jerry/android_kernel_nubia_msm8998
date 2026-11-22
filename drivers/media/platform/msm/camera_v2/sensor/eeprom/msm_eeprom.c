@@ -21,18 +21,24 @@
 #undef CDBG
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
 
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
+#define EEPROM_NAME_MAX 32
+
+struct sensor_eeprom_name_t {
+	char name[4*EEPROM_NAME_MAX];
+};
+
+struct sensor_eeprom_name_t sensor_eeprom_name[3];
+uint8_t eeprom_name_count = 0;
+#endif
+
 DEFINE_MSM_MUTEX(msm_eeprom_mutex);
 #ifdef CONFIG_COMPAT
 static struct v4l2_file_operations msm_eeprom_v4l2_subdev_fops;
 #endif
 
-#ifndef CONFIG_AL3200
-#define BACK_CAL_DATA_FLAG           0x0B17
-#define BACK_CAL_DATA_END             0x1316
-#define BACK_CAL_DATA_CHECKSUM   0x1317
-#define FRONT_CAL_DATA_FLAG          0x0015
-#define FRONT_CAL_DATA_END            0x0814
-#define FRONT_CAL_DATA_CHECKSUM  0x15F0
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
+bool back_sensor_module_invalid = true;
 #endif
 
 /**
@@ -571,7 +577,7 @@ static int eeprom_init_config(struct msm_eeprom_ctrl_t *e_ctrl,
 	rc = eeprom_parse_memory_map(e_ctrl, memory_map_arr);
 	if (rc < 0) {
 		pr_err("%s::%d memory map parse failed\n", __func__, __LINE__);
-		//goto free_mem; // ZTEMT: fuyipeng error power down the camera
+		goto free_mem;
 	}
 
 	rc = msm_camera_power_down(power_info, e_ctrl->eeprom_device_type,
@@ -622,368 +628,6 @@ static int eeprom_config_read_cal_data(struct msm_eeprom_ctrl_t *e_ctrl,
 	return rc;
 }
 
-//ZTEMT:zhouruoyu add for factory altek 3D calibration ----- start
-#ifdef CONFIG_AL3200
-//for altek case
-static int write_eeprom_memory(struct msm_eeprom_ctrl_t *e_ctrl, uint32_t size, uint8_t* buffer)
-{
-	int rc = 0;
-	uint32_t i = 0;
-	uint8_t *buffer_read = NULL;
-
-	if (!e_ctrl) {
-		pr_err("%s e_ctrl is NULL", __func__);
-		return -EINVAL;
-	}
-
-        msleep(50);//ZTEMT: li.bin223 add for improve write eeprom
-
-	for (i = 0x1695; i <= 0x175C; i++) {
-		rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_write(
-				&(e_ctrl->i2c_client),
-				i,
-				buffer[i],
-				1);
-		if ( rc < 0) {
-			pr_err("%s addr = 0x%x, data = 0x%X, rc =%d \n", __func__,i , buffer[i], rc);
-			break;
-		}
-		usleep_range(2000,2100);
-	}
-
-	if ( rc < 0) {
-		goto END;
-	}
-
-	for (i = 0x177E; i <= 0x1FFF; i++) {
-		rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_write(
-				&(e_ctrl->i2c_client),
-				i,
-				buffer[i],
-				1);
-		if ( rc < 0) {
-			pr_err("%s addr = 0x%x, data = 0x%X, rc =%d \n", __func__,i , buffer[i], rc);
-			break;
-		}
-		usleep_range(2000,2100);
-	}
-
-	if ( rc < 0) {
-		goto END;
-	}
-
-	//check data
-	buffer_read = kzalloc(sizeof(uint8_t) * size, GFP_KERNEL);
-	if (!buffer_read) {
-		pr_err("%s:%d kzalloc failed\n", __func__, __LINE__);
-		return -ENOMEM;
-	}
-
-	rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_read_seq(
-				&(e_ctrl->i2c_client),
-				0x0,
-				buffer_read,
-				size);
-
-	if ( rc < 0) {
-		kfree(buffer_read);
-		goto END;
-	}
-
-	for (i = 0; i < size ; i++) {
-		if (buffer[i] != buffer_read[i]) {
-			pr_err("%s data error, addr=0x%X, write data =0x%X, read data=0x%X",
-				__func__, i, buffer[i], buffer_read[i]);
-			rc = -EINVAL;
-			break;
-		}
-	}
-
-	kfree(buffer_read);
-END:
-	return rc;
-}
-#else
-//for arcsoft case
-int32_t nubia_i2c_send_CSWP(struct msm_eeprom_ctrl_t *e_ctrl){
-    int32_t rc = -EFAULT;
-    pr_err("%s  ---E\n", __func__);
-    if((e_ctrl->i2c_client.cci_client->sid << 1)  == 0xA8){
-            usleep_range(3000, 3100);
-            e_ctrl->i2c_client.cci_client->retries = 0;
-            e_ctrl->i2c_client.cci_client->is_cal_mode = 1;
-            e_ctrl->i2c_client.cci_client->sid = 0x00 >> 1;
-            rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_write(
-                           &(e_ctrl->i2c_client),
-                           0,
-                           0,
-                           1);
-            if ( rc < 0) {
-                   pr_err("%s  send CSWP command error not fatal\n",__func__);
-            }else{
-                    pr_err("%s  send CSWP command OK\n",__func__);
-            }
-
-            e_ctrl->i2c_client.cci_client->sid = 0xA8 >> 1;
-            e_ctrl->i2c_client.cci_client->retries = 3;
-            usleep_range(3000, 3100);
-    }
-    pr_err("%s  ---X\n", __func__);
-    return rc;
-}
-int32_t nubia_i2c_write_seq(struct msm_eeprom_ctrl_t *e_ctrl, uint32_t addr, uint8_t *data, uint32_t num_byte)
-{
-    int32_t rc = -EFAULT;
-    int write_idx_pre = 0;
-    int write_num = 0;
-    int write_width = 32;
-    int i = 0;
-
-    pr_err("%s  ---E\n", __func__);
-    usleep_range(3000, 3100);
-    pr_err("%s  num_byte = %d\n", __func__, num_byte);
-
-    if(num_byte < 32){
-        pr_err("%s  num_byte is smaller than 32 ,error\n", __func__);
-        goto END;
-    }
-
-    write_idx_pre = addr % 32;
-    pr_err("%s  addr write_idx_pre = %d\n", __func__, write_idx_pre);
-
-    //i2c_write_seq
-    if(write_idx_pre != 0){
-        write_width = 32 - write_idx_pre;
-    }else{
-        write_width = 32;
-    }
-
-    for (i = 0; i < num_byte;)
-    {
-        if (num_byte - write_num < 32)
-        {
-            write_width = num_byte - write_num;
-        }
-        //pr_err("%s remain num = %d write_width = %d \n", __func__, num_byte - write_num,write_width);
-        rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_write_seq(
-                    &(e_ctrl->i2c_client),
-                    addr + i,
-                    data + i,
-                    write_width);
-        if ( rc < 0)
-        {
-            pr_err("%s nubia_i2c_write_seq error\n", __func__);
-            goto END;
-        }
-
-        write_num += write_width;
-         i += write_width;
-        write_width = 32;
-
-        usleep_range(3000, 3100);
-    }
-
-    pr_err("%s  total write num = %d\n", __func__, write_num);
-
-END:
-    pr_err("%s  ---X\n", __func__);
-    return rc;
-}
-static int write_eeprom_memory(struct msm_eeprom_ctrl_t *e_ctrl, uint32_t size, uint8_t* buffer)
-{
-        int rc = 0;
-        uint32_t i = 0;
-        uint8_t *buffer_read = NULL;
-        int check_sum = 0;
-
-        int cal_data_start = 0;
-        int cal_data_end = 0;
-        int cal_data_checksum = 0;
-
-        uint8_t *total_buffer_read = NULL;
-
-        if (!e_ctrl) {
-            pr_err("%s e_ctrl is NULL", __func__);
-            return -EINVAL;
-        }
-        if (!e_ctrl->i2c_client.cci_client){
-            pr_err("%s cci_client is NULL", __func__);
-            return -EINVAL;
-        }
-
-        pr_err("%s  ---E\n",__func__);
-        pr_err("%s salve addr = %x", __func__,e_ctrl->i2c_client.cci_client->sid<<1);
-        if((e_ctrl->i2c_client.cci_client->sid << 1)  == 0xA0){
-            cal_data_start = BACK_CAL_DATA_FLAG;
-            cal_data_end = BACK_CAL_DATA_END;
-            cal_data_checksum = BACK_CAL_DATA_CHECKSUM;
-            pr_err("%s write [back sensor] start=0x%x end=0x%x checksum=0x%x size=%d", __func__,
-                cal_data_start,cal_data_end,cal_data_checksum,size);
-        }else if((e_ctrl->i2c_client.cci_client->sid << 1)  == 0xA8){
-            cal_data_start = FRONT_CAL_DATA_FLAG;
-            cal_data_end = FRONT_CAL_DATA_END;
-            cal_data_checksum = FRONT_CAL_DATA_CHECKSUM;
-            pr_err("%s write [front sensor] start=0x%x end=0x%x checksum=0x%x size=%d", __func__,
-                cal_data_start,cal_data_end,cal_data_checksum,size);
-        }else{
-            pr_err("%s  sid error",__func__);
-            return -EINVAL;
-        }
-
-        msleep(500);//ZTEMT: li.bin223 add for improve write eeprom
-        nubia_i2c_send_CSWP(e_ctrl);
-        msleep(100);
-       rc = nubia_i2c_write_seq(e_ctrl, cal_data_start, buffer, size);
-
-       for (i = 0; i < size; i++) {
-               check_sum += buffer[i];
-       }
-       usleep_range(3000,3100);
-
-
-       if ( rc < 0) {
-               goto END;
-       }else{
-               pr_err("%s  i2c_write done",__func__);
-       }
-
-       //check data
-       buffer_read = kzalloc(sizeof(uint8_t) * (size), GFP_KERNEL);
-       if (!buffer_read) {
-               pr_err("%s:%d kzalloc failed\n", __func__, __LINE__);
-               return -ENOMEM;
-       }
-
-       rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_read_seq(
-                               &(e_ctrl->i2c_client),
-                               cal_data_start,
-                               buffer_read,
-                               size);
-       if ( rc < 0) {
-               pr_err("%s %d i2c_read_seq error",__func__,__LINE__);
-               kfree(buffer_read);
-               goto END;
-       }
-
-       //check sum
-       check_sum %= 256;
-       rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_write(
-                       &(e_ctrl->i2c_client),
-                       cal_data_checksum,
-                       check_sum,
-                       1);
-
-       for (i = 0; i < size ; i++) {
-               if (buffer[i] != buffer_read[i]) {
-                       pr_err("%s data error, addr=0x%X, write data =0x%X, read data=0x%X",
-                               __func__, i, buffer[i], buffer_read[i]);
-                       rc = -EINVAL;
-                       kfree(buffer_read);
-                       goto END;
-               }
-       }
-
-       //total check sum
-        usleep_range(3000,3100);
-        check_sum = 0;
-
-       total_buffer_read = kzalloc(sizeof(uint8_t) * (5615), GFP_KERNEL);
-       if (!total_buffer_read) {
-               pr_err("%s:%d kzalloc failed\n", __func__, __LINE__);
-               kfree(buffer_read);
-               return -ENOMEM;
-       }
-
-        if((e_ctrl->i2c_client.cci_client->sid << 1)  == 0xA0){
-           rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_read_seq(
-                                   &(e_ctrl->i2c_client),
-                                   0,
-                                   total_buffer_read,
-                                   4888);
-           if ( rc < 0) {
-                   pr_err("%s  %d i2c_read_seq error",__func__,__LINE__);
-                   kfree(total_buffer_read);
-                   kfree(buffer_read);
-                   goto END;
-           }
-
-        for (i = 0; i < 4888 ; i++) {
-            check_sum += total_buffer_read[i];
-        }
-        pr_err("%s  new total checksum is 0x%x ",__func__,check_sum);
-        check_sum= check_sum & 0xFFFF;
-
-        usleep_range(3000,3100);
-        rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_write(
-                       &(e_ctrl->i2c_client),
-                       4888,
-                       check_sum>>8,
-                       1);
-        if ( rc < 0) {
-               pr_err("%s  i2c_write error",__func__);
-               kfree(total_buffer_read);
-               kfree(buffer_read);
-               goto END;
-        }
-
-        usleep_range(3000,3100);
-        rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_write(
-                       &(e_ctrl->i2c_client),
-                       4889,
-                       check_sum&0xff,
-                       1);
-        if ( rc < 0) {
-               pr_err("%s  i2c_write error",__func__);
-               kfree(total_buffer_read);
-               kfree(buffer_read);
-               goto END;
-        }
-
-        }else if((e_ctrl->i2c_client.cci_client->sid << 1)  == 0xA8){
-           rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_read_seq(
-                                   &(e_ctrl->i2c_client),
-                                   0,
-                                   total_buffer_read,
-                                   5615);
-           if ( rc < 0) {
-                   pr_err("%s  %d i2c_read_seq error",__func__,__LINE__);
-                   kfree(total_buffer_read);
-                   kfree(buffer_read);
-                   goto END;
-           }
-
-        for (i = 0; i < 5615 ; i++) {
-            check_sum += total_buffer_read[i];
-        }
-
-        check_sum= check_sum%256;
-        pr_err("%s  new total checksum is 0x%x ",__func__,check_sum);
-
-        usleep_range(3000,3100);
-        rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_write(
-                       &(e_ctrl->i2c_client),
-                       0x15F2,
-                       check_sum,
-                       1);
-        if ( rc < 0) {
-               pr_err("%s  i2c_write error",__func__);
-               kfree(total_buffer_read);
-               kfree(buffer_read);
-               goto END;
-        }
-
-        }
-        
-       kfree(total_buffer_read);
-       kfree(buffer_read);
-END:
-       e_ctrl->i2c_client.cci_client->is_cal_mode = 0;
-       pr_err("%s  ---X\n",__func__);
-       return rc;
-}
-#endif
-//ZTEMT:zhouruoyu add for factory altek 3D calibration ----- end
-
 static int msm_eeprom_config(struct msm_eeprom_ctrl_t *e_ctrl,
 	void __user *argp)
 {
@@ -991,10 +635,6 @@ static int msm_eeprom_config(struct msm_eeprom_ctrl_t *e_ctrl,
 		(struct msm_eeprom_cfg_data *)argp;
 	int rc = 0;
 	size_t length = 0;
-	//ZTEMT:zhouruoyu add for factory altek 3D calibration ----- start
-	uint8_t *buffer;
-	uint32_t size;
-	//ZTEMT:zhouruoyu add for factory altek 3D calibration ----- end
 
 	CDBG("%s E\n", __func__);
 	switch (cdata->cfgtype) {
@@ -1049,31 +689,6 @@ static int msm_eeprom_config(struct msm_eeprom_ctrl_t *e_ctrl,
 				__func__, __LINE__);
 		}
 		break;
-	//ZTEMT:zhouruoyu add for factory altek 3D calibration ----- start
-	case CFG_EEPROM_DO_CALIBRATION:
-		pr_err("%s E CFG_EEPROM_READ_CAL_DATA\n", __func__);
-		size = cdata->cfg.write_data.num_bytes;
-		buffer = kzalloc(size * (sizeof(uint8_t)), GFP_KERNEL);
-		if (!buffer) {
-		pr_err("%s:%d failed\n", __func__, __LINE__);
-			rc = -ENOMEM;
-			return rc;
-		}
-		if (copy_from_user(buffer, cdata->cfg.write_data.dbuffer ,size * sizeof(uint8_t))) {
-			pr_err("%s:%d failed\n", __func__, __LINE__);
-			kfree(buffer);
-			rc = -EFAULT;
-			return rc;
-		}
-		rc = write_eeprom_memory(e_ctrl, size, buffer);
-		if (rc < 0) {
-			pr_err("%s write eeprom failed",__func__);
-			kfree(buffer);
-			return rc;
-		}
-		kfree(buffer);
-		break;
-	//ZTEMT:zhouruoyu add for factory altek 3D calibration ----- end
 	default:
 		break;
 	}
@@ -1860,7 +1475,7 @@ static int eeprom_init_config32(struct msm_eeprom_ctrl_t *e_ctrl,
 	if (rc < 0) {
 		pr_err("%s:%d memory map parse failed\n",
 			__func__, __LINE__);
-		//goto free_mem; // ZTEMT: fuyipeng error power down the camera
+		goto free_mem;
 	}
 
 	rc = msm_camera_power_down(power_info,
@@ -1878,37 +1493,6 @@ free_mem:
 	mem_map_array = NULL;
 	return rc;
 }
-
-//ZTEMT:zhouruoyu add for factory altek 3D calibration ----- start
-static int write_eeprom_memory32(struct msm_eeprom_ctrl_t *e_ctrl, void __user *arg)
-{
-	int rc;
-	uint8_t *buffer;
-	uint32_t size;
-	struct msm_eeprom_cfg_data32 *cdata32 =
-		(struct msm_eeprom_cfg_data32 *) arg;
-
-	size = cdata32->cfg.write_data.num_bytes;
-
-	buffer = kzalloc(size * (sizeof(uint8_t)), GFP_KERNEL);
-	if (!buffer) {
-			pr_err("%s:%d failed\n", __func__, __LINE__);
-			rc = -ENOMEM;
-			return rc;
-	}
-	if (copy_from_user(buffer, (void *)compat_ptr(cdata32->cfg.write_data.dbuffer) ,size * sizeof(uint8_t))) {
-			pr_err("%s:%d failed\n", __func__, __LINE__);
-			kfree(buffer);
-			rc = -EFAULT;
-			return rc;
-	}
-
-	rc = write_eeprom_memory(e_ctrl, size , buffer);
-
-	kfree(buffer);
-	return rc;
-}
-//ZTEMT:zhouruoyu add for factory altek 3D calibration ----- end
 
 static int msm_eeprom_config32(struct msm_eeprom_ctrl_t *e_ctrl,
 	void __user *argp)
@@ -1952,7 +1536,9 @@ static int msm_eeprom_config32(struct msm_eeprom_ctrl_t *e_ctrl,
 		if (e_ctrl->userspace_probe == 0) {
 			pr_err("%s:%d Eeprom already probed at kernel boot",
 				__func__, __LINE__);
+#ifndef CONFIG_MACH_XIAOMI_MSM8998
 			rc = -EINVAL;
+#endif
 			break;
 		}
 		if (e_ctrl->cal_data.num_data == 0) {
@@ -1965,16 +1551,6 @@ static int msm_eeprom_config32(struct msm_eeprom_ctrl_t *e_ctrl,
 				__func__, __LINE__);
 		}
 		break;
-	//ZTEMT:zhouruoyu add for factory altek 3D calibration ----- start
-	case CFG_EEPROM_DO_CALIBRATION:
-		CDBG("%s E CFG_EEPROM_READ_CAL_DATA\n", __func__);
-		rc = write_eeprom_memory32(e_ctrl, argp);
-		if (rc < 0) {
-			pr_err("%s write eeprom failed",__func__);
-			return rc;
-		}
-		break;
-	//ZTEMT:zhouruoyu add for factory altek 3D calibration ----- end
 	default:
 		break;
 	}
@@ -2020,6 +1596,31 @@ static long msm_eeprom_subdev_fops_ioctl32(struct file *file, unsigned int cmd,
 
 #endif
 
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
+uint8_t g_cal_fadj_data[128];
+EXPORT_SYMBOL(g_cal_fadj_data);
+
+/* add eeprom identification flow */
+void get_eeprom_name(uint8_t index, char *name)
+{
+	strlcpy(name, sensor_eeprom_name[index].name, sizeof(sensor_eeprom_name[index].name));
+	return;
+}
+EXPORT_SYMBOL(get_eeprom_name);
+EXPORT_SYMBOL(eeprom_name_count);
+
+/* compatible eeprom map for sagit P3 & P2 */
+int get_back_sensor_module_invalid(void)
+{
+	if (back_sensor_module_invalid) {
+		return -EINVAL;
+	} else {
+		return 0;
+	}
+}
+EXPORT_SYMBOL(get_back_sensor_module_invalid);
+#endif
+
 static int msm_eeprom_platform_probe(struct platform_device *pdev)
 {
 	int rc = 0;
@@ -2031,6 +1632,15 @@ static int msm_eeprom_platform_probe(struct platform_device *pdev)
 	struct msm_eeprom_board_info *eb_info = NULL;
 	struct device_node *of_node = pdev->dev.of_node;
 	struct msm_camera_power_ctrl_t *power_info = NULL;
+
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
+	int eeprom_basic_info_off = 0;
+	int eeprom_ois_info_off = 0;
+	char module_eeprom_name[4*EEPROM_NAME_MAX] = {0};
+	char pro_name[EEPROM_NAME_MAX] = {0};
+	char sensor_name[EEPROM_NAME_MAX] = {0};
+	char module_name[EEPROM_NAME_MAX] = {0};
+#endif
 
 	CDBG("%s E\n", __func__);
 
@@ -2165,9 +1775,90 @@ static int msm_eeprom_platform_probe(struct platform_device *pdev)
 			pr_err("%s read_eeprom_memory failed\n", __func__);
 			goto power_down;
 		}
+
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
+		/* compatible eeprom map for sagit P3 & P2 */
+		CDBG("++++++++0x0e = 0x%x, 0x0d = 0x%x \n", e_ctrl->cal_data.mapdata[0x0e], e_ctrl->cal_data.mapdata[0x0d]);
+		if ((strcmp(eb_info->eeprom_name, "sagit_imx386_semco") == 0) ||
+			(strcmp(eb_info->eeprom_name, "sagit_s5k3m3_semco") == 0)) {
+			if (e_ctrl->cal_data.mapdata[0x0e] != 0x03) {
+				if ((e_ctrl->cal_data.mapdata[0x01] == 0x07) || (e_ctrl->cal_data.mapdata[0x01] == 0x03)) {
+					pr_err("3m3 semco and ofilm eeprom goto etcrl free");
+					back_sensor_module_invalid = false;
+					pr_err("back_sensor_module_invalid = %d \n", back_sensor_module_invalid);
+					strlcpy(sensor_eeprom_name[eeprom_name_count].name, eb_info->eeprom_name, EEPROM_NAME_MAX);
+					pr_err("%s: sensor_eeprom_name[%d] = %s, probe unnecessary!\n", __func__, eeprom_name_count, sensor_eeprom_name[eeprom_name_count].name);
+					eeprom_name_count++;
+					goto ectrl_free;
+				}
+			}
+		}
+		if (strcmp(eb_info->eeprom_name, "chiron_imx386_semco") == 0) {
+			eeprom_basic_info_off = 1;
+		}
+		CDBG("++++++++0x01 = 0x%x, 0x0d = 0x%x, 0x0c = 0x%x \n", e_ctrl->cal_data.mapdata[0x01], e_ctrl->cal_data.mapdata[0x0d], e_ctrl->cal_data.mapdata[0x0c]);
+		for (j = 0; j < (sizeof(module_info) / sizeof(struct module_info_t)); j++) {
+			if (e_ctrl->cal_data.mapdata[0x01 + eeprom_basic_info_off] == module_info[j].module_num) {
+				strlcpy(module_name, module_info[j].name, sizeof(module_info[j].name));
+				break;
+			}
+		}
+		CDBG("%s: module_name = %s\n", __func__, module_name);
+
+		for (j = 0; j < (sizeof(project_info) / sizeof(struct project_info_t)); j++) {
+			if (e_ctrl->cal_data.mapdata[0x0D + eeprom_basic_info_off] == project_info[j].pro_num) {
+				strlcpy(pro_name, project_info[j].name, sizeof(project_info[j].name));
+				break;
+			}
+		}
+		CDBG("%s: project_name = %s\n", __func__, pro_name);
+
+		for (j = 0; j < (sizeof(sensor_info) / sizeof(struct sensor_info_t)); j++) {
+			if (e_ctrl->cal_data.mapdata[0x0C + eeprom_basic_info_off] == sensor_info[j].sensor_num) {
+				if ((strcmp(pro_name, "sagit_") == 0) && (1 == pdev->id)) {
+					strlcpy(sensor_name, "s5k3m3", sizeof("s5k3m3"));
+				} else {
+					strlcpy(sensor_name, sensor_info[j].name, sizeof(sensor_info[j].name));
+				}
+				break;
+			}
+		}
+		CDBG("%s: sensor_name = %s\n", __func__, sensor_name);
+
+		for (j = 0; j < 3; j++) {
+			if (0 == j) {
+				strlcat(module_eeprom_name, pro_name, sizeof(module_eeprom_name));
+			} else if (1 == j) {
+				strlcat(module_eeprom_name, sensor_name, sizeof(module_eeprom_name));
+			} else {
+				strlcat(module_eeprom_name, module_name, sizeof(module_eeprom_name));
+			}
+		}
+		CDBG("%s: module_eeprom_name = %s\n", __func__, module_eeprom_name);
+
+		if (strcmp(module_eeprom_name, eb_info->eeprom_name) != 0) {
+			CDBG("%s: eeprom identify failed (non fatal)! qcom,eeprom-name = %s, module_eeprom_name = %s\n", __func__, eb_info->eeprom_name, module_eeprom_name);
+			rc = -ENOMEM;
+			goto power_down;
+		}
+#endif
+
 		for (j = 0; j < e_ctrl->cal_data.num_data; j++)
 			CDBG("memory_data[%d] = 0x%X\n", j,
 				e_ctrl->cal_data.mapdata[j]);
+
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
+		if ((strcmp(eb_info->eeprom_name, "sagit_imx386_semco") == 0) ||
+			(strcmp(eb_info->eeprom_name, "chiron_imx386_semco") == 0)) {
+			if (strcmp(eb_info->eeprom_name, "sagit_imx386_semco") == 0)
+				eeprom_ois_info_off = 4910;
+			else if (strcmp(eb_info->eeprom_name, "chiron_imx386_semco") == 0)
+				eeprom_ois_info_off = 2095;
+			memcpy((void *)g_cal_fadj_data, (void *)(e_ctrl->cal_data.mapdata+eeprom_ois_info_off), 43);
+			for (j = 0; j < 43; j++)
+				CDBG("g_cal_fadj_data[%d] = 0x%X\n", j, g_cal_fadj_data[j]);
+		}
+#endif
 
 		e_ctrl->is_supported |= msm_eeprom_match_crc(&e_ctrl->cal_data);
 
@@ -2201,6 +1892,13 @@ static int msm_eeprom_platform_probe(struct platform_device *pdev)
 #endif
 
 	e_ctrl->is_supported = (e_ctrl->is_supported << 1) | 1;
+
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
+	strlcpy(sensor_eeprom_name[eeprom_name_count].name, module_eeprom_name, sizeof(sensor_eeprom_name[eeprom_name_count].name));
+	pr_err("%s: sensor_eeprom_name[%d] = %s, probe success!\n", __func__, eeprom_name_count, sensor_eeprom_name[eeprom_name_count].name);
+	eeprom_name_count++;
+#endif
+
 	CDBG("%s X\n", __func__);
 	return rc;
 

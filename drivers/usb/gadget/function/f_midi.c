@@ -89,8 +89,6 @@ struct f_midi {
 	unsigned int buflen, qlen;
 };
 
-static struct f_midi *the_midi;
-
 static inline struct f_midi *func_to_midi(struct usb_function *f)
 {
 	return container_of(f, struct f_midi, func);
@@ -577,10 +575,6 @@ static int f_midi_in_open(struct snd_rawmidi_substream *substream)
 {
 	struct f_midi *midi = substream->rmidi->private_data;
 
-	/* check if midi got disabled or re-enabled quickly */
-	if (midi != the_midi)
-		return -ENODEV;
-
 	if (!midi->in_port[substream->number])
 		return -EINVAL;
 
@@ -602,10 +596,6 @@ static void f_midi_in_trigger(struct snd_rawmidi_substream *substream, int up)
 {
 	struct f_midi *midi = substream->rmidi->private_data;
 
-	/* check if midi got disabled or re-enabled quickly */
-	if (midi != the_midi)
-		return;
-
 	if (!midi->in_port[substream->number])
 		return;
 
@@ -618,10 +608,6 @@ static void f_midi_in_trigger(struct snd_rawmidi_substream *substream, int up)
 static int f_midi_out_open(struct snd_rawmidi_substream *substream)
 {
 	struct f_midi *midi = substream->rmidi->private_data;
-
-	/* check if midi got disabled or re-enabled quickly */
-	if (midi != the_midi)
-		return -ENODEV;
 
 	if (substream->number >= MAX_PORTS)
 		return -EINVAL;
@@ -642,10 +628,6 @@ static int f_midi_out_close(struct snd_rawmidi_substream *substream)
 static void f_midi_out_trigger(struct snd_rawmidi_substream *substream, int up)
 {
 	struct f_midi *midi = substream->rmidi->private_data;
-
-	/* check if midi got disabled or re-enabled quickly */
-	if (midi != the_midi)
-		return;
 
 	VDBG(midi, "%s()\n", __func__);
 
@@ -900,11 +882,11 @@ static int f_midi_bind(struct usb_configuration *c, struct usb_function *f)
 	}
 
 	/* configure the endpoint descriptors ... */
-	ms_out_desc.bLength = USB_DT_MS_ENDPOINT_SIZE(midi->in_ports);
-	ms_out_desc.bNumEmbMIDIJack = midi->in_ports;
+	ms_out_desc.bLength = USB_DT_MS_ENDPOINT_SIZE(midi->out_ports);
+	ms_out_desc.bNumEmbMIDIJack = midi->out_ports;
 
-	ms_in_desc.bLength = USB_DT_MS_ENDPOINT_SIZE(midi->out_ports);
-	ms_in_desc.bNumEmbMIDIJack = midi->out_ports;
+	ms_in_desc.bLength = USB_DT_MS_ENDPOINT_SIZE(midi->in_ports);
+	ms_in_desc.bNumEmbMIDIJack = midi->in_ports;
 
 	/* ... and add them to the list */
 	midi_function[i++] = (struct usb_descriptor_header *) &bulk_out_desc;
@@ -1210,7 +1192,6 @@ static void f_midi_free(struct usb_function *f)
 		kfree(midi->in_port[i]);
 	opts->func_inst.f = NULL;
 	kfree(midi);
-	the_midi = NULL;
 	opts->func_inst.f = NULL;
 	--opts->refcnt;
 	mutex_unlock(&opts->lock);
@@ -1293,8 +1274,6 @@ static struct usb_function *f_midi_alloc(struct usb_function_instance *fi)
 	midi->func.set_alt	= f_midi_set_alt;
 	midi->func.disable	= f_midi_disable;
 	midi->func.free_func	= f_midi_free;
-
-	the_midi = midi;
 
 	fi->f = &midi->func;
 	return &midi->func;

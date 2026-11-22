@@ -173,6 +173,13 @@ msm8998-v2.1-mtp-overlay.dtbo-base :=  msm8998-v2.1.dtb
 msm8998-qrd-overlay.dtbo-base :=  msm8998-qrd.dtb
 msm8998-qrd-vr1-overlay.dtbo-base :=  msm8998-qrd-vr1.dtb
 msm8998-qrd-skuk-overlay.dtbo-base :=  msm8998-qrd-skuk.dtb
+
+else
+ifeq ($(CONFIG_MACH_SAGIT),y)
+dtb-$(CONFIG_ARCH_MSM8998) += sagit-msm8998-v2.1-mtp.dtb
+else
+ifeq ($(CONFIG_MACH_CHIRON),y)
+dtb-$(CONFIG_ARCH_MSM8998) += chiron-msm8998-v2.1-mtp.dtb
 else
 dtb-$(CONFIG_ARCH_MSM8998) += msm8998-sim.dtb \
 	msm8998-rumi.dtb \
@@ -208,6 +215,8 @@ dtb-$(CONFIG_ARCH_MSM8998) += msm8998-sim.dtb \
 	msm8998-v2.1-interposer-sdm660-cdp.dtb \
 	msm8998-v2.1-interposer-sdm660-mtp.dtb \
 	msm8998-v2.1-interposer-sdm660-qrd.dtb
+endif
+endif
 endif
 
 dtb-$(CONFIG_ARCH_MSMHAMSTER) += msmhamster-rumi.dtb
@@ -326,25 +335,9 @@ dtb-$(CONFIG_ARCH_SDM630) += sdm630-rumi.dtb \
 	sdm455-internal-codec-rcm.dtb
 
 ifeq ($(CONFIG_ARM64),y)
-ifeq ($(CONFIG_MACH_NUBIA_NX563J),y)
-always          += msm8998-mtp-NX563J.dtb \
-        msm8998-v2-mtp-NX563J.dtb \
-        msm8998-v2.1-mtp-NX563J.dtb
-subdir-y        := $(dts-dirs)
-else ifeq ($(CONFIG_MACH_NUBIA_NX595J),y)
-always          += msm8998-mtp-NX595J.dtb \
-        msm8998-v2-mtp-NX595J.dtb \
-        msm8998-v2.1-mtp-NX595J.dtb
-subdir-y        := $(dts-dirs)
-else ifeq ($(CONFIG_MACH_NUBIA_NX609J),y)
-always          += msm8998-mtp-NX609J.dtb \
-        msm8998-v2-mtp-NX609J.dtb \
-        msm8998-v2.1-mtp-NX609J.dtb
-subdir-y        := $(dts-dirs)
-else
+always          := $(dtb-y)
 always          += $(dtbo-y)
 subdir-y        := $(dts-dirs)
-endif
 else
 targets += dtbs
 targets += $(addprefix ../, $(dtb-y))

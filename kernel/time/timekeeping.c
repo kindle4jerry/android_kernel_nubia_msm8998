@@ -15,6 +15,7 @@
 #include <linux/init.h>
 #include <linux/mm.h>
 #include <linux/sched.h>
+#include <linux/sched/loadavg.h>
 #include <linux/syscore_ops.h>
 #include <linux/clocksource.h>
 #include <linux/jiffies.h>
@@ -328,7 +329,8 @@ static inline u64 timekeeping_delta_to_ns(struct tk_read_base *tkr,
 {
 	u64 nsec;
 
-	nsec = (delta * tkr->mult + tkr->xtime_nsec) >> tkr->shift;
+	nsec = delta * tkr->mult + tkr->xtime_nsec;
+	nsec >>= tkr->shift;
 
 	/* If arch requires, add in get_arch_timeoffset() */
 	return nsec + arch_gettimeoffset();
@@ -542,12 +544,10 @@ static inline void old_vsyscall_fixup(struct timekeeper *tk)
 	* users are removed, this can be killed.
 	*/
 	remainder = tk->tkr_mono.xtime_nsec & ((1ULL << tk->tkr_mono.shift) - 1);
-	if (remainder != 0) {
-		tk->tkr_mono.xtime_nsec -= remainder;
-		tk->tkr_mono.xtime_nsec += 1ULL << tk->tkr_mono.shift;
-		tk->ntp_error += remainder << tk->ntp_error_shift;
-		tk->ntp_error -= (1ULL << tk->tkr_mono.shift) << tk->ntp_error_shift;
-	}
+	tk->tkr_mono.xtime_nsec -= remainder;
+	tk->tkr_mono.xtime_nsec += 1ULL << tk->tkr_mono.shift;
+	tk->ntp_error += remainder << tk->ntp_error_shift;
+	tk->ntp_error -= (1ULL << tk->tkr_mono.shift) << tk->ntp_error_shift;
 }
 #else
 #define old_vsyscall_fixup(tk)

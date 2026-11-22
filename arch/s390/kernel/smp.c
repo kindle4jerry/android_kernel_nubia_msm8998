@@ -693,6 +693,7 @@ static struct sclp_core_info *smp_get_core_info(void)
 				continue;
 			info->core[info->configured].core_id =
 				address >> smp_cpu_mt_shift;
+			info->core[info->configured].type = boot_core_type;
 			info->configured++;
 		}
 		info->combined = info->configured;
@@ -871,7 +872,7 @@ int __cpu_up(unsigned int cpu, struct task_struct *tidle)
 	pcpu_attach_task(pcpu, tidle);
 	pcpu_start_fn(pcpu, smp_start_secondary, NULL);
 	/* Wait until cpu puts itself in the online & active maps */
-	while (!cpu_online(cpu))
+	while (!cpu_online(cpu) || !cpu_active(cpu))
 		cpu_relax();
 	return 0;
 }

@@ -13,11 +13,6 @@
 #include <linux/sched.h>
 #include <linux/namei.h>
 #include <linux/slab.h>
-//Nubia FileObserver Begin
-#ifdef CONFIG_FUSE_FS_FILE_OBSERVER
-#include "file_observer.h"
-#endif
-//Nubia FileObserver End
 
 static bool fuse_use_readdirplus(struct inode *dir, struct dir_context *ctx)
 {
@@ -243,7 +238,7 @@ static int fuse_dentry_revalidate(struct dentry *entry, unsigned int flags)
 			spin_unlock(&fc->lock);
 		}
 		kfree(forget);
-		if (ret == -ENOMEM)
+		if (ret == -ENOMEM || ret == -EINTR)
 			goto out;
 		if (ret || fuse_invalid_attr(&outarg.attr) ||
 		    (outarg.attr.mode ^ inode->i_mode) & S_IFMT)
@@ -485,7 +480,6 @@ static int fuse_create_open(struct inode *dir, struct dentry *entry,
 	args.out.args[0].value = &outentry;
 	args.out.args[1].size = sizeof(outopen);
 	args.out.args[1].value = &outopen;
-	args.out.passthrough_filp = NULL;
 	err = fuse_simple_request(fc, &args);
 	if (err)
 		goto out_free_ff;
@@ -498,8 +492,7 @@ static int fuse_create_open(struct inode *dir, struct dentry *entry,
 	ff->fh = outopen.fh;
 	ff->nodeid = outentry.nodeid;
 	ff->open_flags = outopen.open_flags;
-	if (args.out.passthrough_filp != NULL)
-		ff->passthrough_filp = args.out.passthrough_filp;
+	fuse_passthrough_setup(fc, ff, &outopen);
 	inode = fuse_iget(dir->i_sb, outentry.nodeid, outentry.generation,
 			  &outentry.attr, entry_attr_timeout(&outentry), 0);
 	if (!inode) {
@@ -632,7 +625,6 @@ static int fuse_mknod(struct inode *dir, struct dentry *entry, umode_t mode,
 {
 	struct fuse_mknod_in inarg;
 	struct fuse_conn *fc = get_fuse_conn(dir);
-        int ret = 0;
 	FUSE_ARGS(args);
 
 	if (!fc->dont_mask)
@@ -648,13 +640,7 @@ static int fuse_mknod(struct inode *dir, struct dentry *entry, umode_t mode,
 	args.in.args[0].value = &inarg;
 	args.in.args[1].size = entry->d_name.len + 1;
 	args.in.args[1].value = entry->d_name.name;
-	ret = create_new_entry(fc, &args, dir, entry, mode);
-        //Nubia FileObserver Begin
-#ifdef CONFIG_FUSE_FS_FILE_OBSERVER
-        fuse_post_file_create(entry);
-#endif
-        //Nubia FileObserver End
-        return ret;
+	return create_new_entry(fc, &args, dir, entry, mode);
 }
 
 static int fuse_create(struct inode *dir, struct dentry *entry, umode_t mode,
@@ -667,7 +653,6 @@ static int fuse_mkdir(struct inode *dir, struct dentry *entry, umode_t mode)
 {
 	struct fuse_mkdir_in inarg;
 	struct fuse_conn *fc = get_fuse_conn(dir);
-        int ret = 0;
 	FUSE_ARGS(args);
 
 	if (!fc->dont_mask)
@@ -682,13 +667,7 @@ static int fuse_mkdir(struct inode *dir, struct dentry *entry, umode_t mode)
 	args.in.args[0].value = &inarg;
 	args.in.args[1].size = entry->d_name.len + 1;
 	args.in.args[1].value = entry->d_name.name;
-	ret = create_new_entry(fc, &args, dir, entry, S_IFDIR);
-        //Nubia FileObserver Begin
-#ifdef CONFIG_FUSE_FS_FILE_OBSERVER
-        fuse_post_file_mkdir(dir, entry);
-#endif
-        //Nubia FileObserver End
-        return ret;
+	return create_new_entry(fc, &args, dir, entry, S_IFDIR);
 }
 
 static int fuse_symlink(struct inode *dir, struct dentry *entry,
@@ -746,11 +725,6 @@ static int fuse_unlink(struct inode *dir, struct dentry *entry)
 		fuse_invalidate_attr(dir);
 		fuse_invalidate_entry_cache(entry);
 		fuse_update_ctime(inode);
-                //Nubia FileObserver Begin
-#ifdef CONFIG_FUSE_FS_FILE_OBSERVER
-                fuse_post_file_unlink(dir, entry);
-#endif
-                //Nubia FileObserver End
 	} else if (err == -EINTR)
 		fuse_invalidate_entry(entry);
 	return err;
@@ -772,11 +746,6 @@ static int fuse_rmdir(struct inode *dir, struct dentry *entry)
 		clear_nlink(d_inode(entry));
 		fuse_invalidate_attr(dir);
 		fuse_invalidate_entry_cache(entry);
-                //Nubia FileObserver Begin
-#ifdef CONFIG_FUSE_FS_FILE_OBSERVER
-                fuse_post_file_rmdir(dir, entry);
-#endif
-                //Nubia FileObserver End
 	} else if (err == -EINTR)
 		fuse_invalidate_entry(entry);
 	return err;
@@ -824,11 +793,6 @@ static int fuse_rename_common(struct inode *olddir, struct dentry *oldent,
 			fuse_invalidate_entry_cache(newent);
 			fuse_update_ctime(d_inode(newent));
 		}
-                //Nubia FileObserver Begin
-#ifdef CONFIG_FUSE_FS_FILE_OBSERVER
-                fuse_post_file_rename(olddir, oldent, newdir, newent);
-#endif
-                //Nubia FileObserver End
 	} else if (err == -EINTR) {
 		/* If request was interrupted, DEITY only knows if the
 		   rename actually took place.  If the invalidation

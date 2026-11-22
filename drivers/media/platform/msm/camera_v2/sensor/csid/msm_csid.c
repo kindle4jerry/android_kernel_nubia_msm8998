@@ -61,10 +61,7 @@
 #define FALSE  0
 
 #define MAX_LANE_COUNT 4
-/*ZTEMT houyujun modified for reset waittime--start*/
-//#define CSID_TIMEOUT msecs_to_jiffies(100)
-#define CSID_TIMEOUT msecs_to_jiffies(1000)
-/*ZTEMT houyujun modified for reset waittime--end*/
+#define CSID_TIMEOUT msecs_to_jiffies(100)
 
 #undef CDBG
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
@@ -496,7 +493,7 @@ static irqreturn_t msm_csid_irq(int irq_num, void *data)
 
 	irq = msm_camera_io_r(csid_dev->base +
 		csid_dev->ctrl_reg->csid_reg.csid_irq_status_addr);
-	CDBG("%s CSID%d_IRQ_STATUS_ADDR = 0x%x\n",//ZTEMT: li.bin1 change it
+	pr_err_ratelimited("%s CSID%d_IRQ_STATUS_ADDR = 0x%x\n",
 		 __func__, csid_dev->pdev->id, irq);
 	if (irq & (0x1 <<
 		csid_dev->ctrl_reg->csid_reg.csid_rst_done_irq_bitshift))

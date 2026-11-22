@@ -984,9 +984,6 @@ static int fg_get_batt_profile(struct fg_chip *chip)
 	struct device_node *batt_node, *profile_node;
 	const char *data;
 	int rc, len;
-	#if defined(CONFIG_NUBIA_CHARGE_FEATURE)
-	int temp=0;
-	#endif
 
 	batt_node = of_find_node_by_name(node, "qcom,battery-data");
 	if (!batt_node) {
@@ -996,20 +993,6 @@ static int fg_get_batt_profile(struct fg_chip *chip)
 
 	profile_node = of_batterydata_get_best_profile(batt_node,
 				chip->batt_id_ohms / 1000, NULL);
-	
-	#if defined(CONFIG_NUBIA_CHARGE_FEATURE)
-	if (IS_ERR(profile_node) ||!profile_node){
-		rc = of_property_read_u32(node, "nubia,use-default-batt-id", &temp);
-		if(rc < 0)
-			pr_err("get use-default-batt-id error\n");
-
-		pr_err("couldn't find profile handle,use nubia default batt id =%d\n",temp);
-		profile_node = of_batterydata_get_best_profile(batt_node,
-				temp, NULL);
-	}
-	#endif
-
-
 	if (IS_ERR(profile_node))
 		return PTR_ERR(profile_node);
 
@@ -1181,19 +1164,6 @@ static void fg_notify_charger(struct fg_chip *chip)
 			rc);
 		return;
 	}
-
-#if defined(CONFIG_NUBIA_HW_STEP_CHARGE_FEATURE)
-	if( strstr(chip->bp.batt_type_str, "step") != NULL ){
-		prop.intval = 1;
-		rc = power_supply_set_property(chip->batt_psy,
-				POWER_SUPPLY_PROP_STEP_CHARGING_ENABLED, &prop);
-		if (rc < 0) {
-			pr_err("Error in setting step charging enable property on batt_psy, rc=%d\n",
-				rc);
-			return;
-		}
-	}
-#endif
 
 	fg_dbg(chip, FG_STATUS, "Notified charger on float voltage and FCC\n");
 }
@@ -3111,15 +3081,6 @@ done:
 	batt_psy_initialized(chip);
 	fg_notify_charger(chip);
 	chip->profile_loaded = true;
-
-#if defined(CONFIG_NUBIA_CHARGE_FEATURE)
-	chip->soc_monitor_work_votable = find_votable("SOC_MONITOR");
-	if (chip->soc_monitor_work_votable != NULL)
-		vote(chip->soc_monitor_work_votable, "FG_PROFILE_VOTER", true, 0);
-	else
-		pr_err("NEO: can't find SOC_MONITOR votable\n");
-#endif
-
 	fg_dbg(chip, FG_STATUS, "profile loaded successfully");
 out:
 	chip->soc_reporting_ready = true;
@@ -3863,9 +3824,6 @@ static int fg_psy_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_TIME_TO_FULL_AVG:
 		rc = fg_get_time_to_full(chip, &pval->intval);
 		break;
-	case POWER_SUPPLY_PROP_TIME_TO_FULL_NOW:
-		rc = fg_get_time_to_full(chip, &pval->intval);
-		break;
 	case POWER_SUPPLY_PROP_TIME_TO_EMPTY_AVG:
 		rc = fg_get_time_to_empty(chip, &pval->intval);
 		break;
@@ -4454,6 +4412,13 @@ static int fg_hw_init(struct fg_chip *chip)
 		return rc;
 	}
 
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
+	rc = fg_sram_masked_write(chip, 19, 0, 0x08, 0x08, FG_IMA_DEFAULT);
+	if (rc < 0) {
+		pr_err("Error in writing cc soc auto clear rc=%d\n", rc);
+	}
+#endif
+
 	fg_encode(chip->sp, FG_SRAM_ESR_PULSE_THRESH,
 		chip->dt.esr_pulse_thresh_ma, buf);
 	rc = fg_sram_write(chip, chip->sp[FG_SRAM_ESR_PULSE_THRESH].addr_word,
@@ -4752,7 +4717,6 @@ static struct fg_irq_info fg_irqs[FG_IRQ_MAX] = {
 	[MSOC_HIGH_IRQ] = {
 		.name		= "msoc-high",
 		.handler	= fg_soc_irq_handler,
-		.wakeable	= true,
 	},
 	[MSOC_EMPTY_IRQ] = {
 		.name		= "msoc-empty",
@@ -4762,12 +4726,10 @@ static struct fg_irq_info fg_irqs[FG_IRQ_MAX] = {
 	[MSOC_LOW_IRQ] = {
 		.name		= "msoc-low",
 		.handler	= fg_soc_irq_handler,
-		.wakeable	= true,
 	},
 	[MSOC_DELTA_IRQ] = {
 		.name		= "msoc-delta",
 		.handler	= fg_delta_msoc_irq_handler,
-		.wakeable	= true,
 	},
 	[BSOC_DELTA_IRQ] = {
 		.name		= "bsoc-delta",

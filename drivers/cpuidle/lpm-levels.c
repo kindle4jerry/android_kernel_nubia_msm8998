@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2020, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2017, The Linux Foundation. All rights reserved.
  * Copyright (C) 2006-2007 Adam Belay <abelay@novell.com>
  * Copyright (C) 2009 Intel Corporation
  *
@@ -60,7 +60,6 @@
 #define SCM_HANDOFF_LOCK_ID "S:7"
 #define PSCI_POWER_STATE(reset) (reset << 30)
 #define PSCI_AFFINITY_LEVEL(lvl) ((lvl & 0x3) << 24)
-#define BIAS_HYST (5 * NSEC_PER_MSEC)
 static remote_spinlock_t scm_handoff_lock;
 
 enum {
@@ -439,9 +438,7 @@ static void clusttimer_cancel(void)
 	struct lpm_cluster *cluster = per_cpu(cpu_cluster, cpu);
 
 	hrtimer_try_to_cancel(&cluster->histtimer);
-
-	if (cluster->parent)
-		hrtimer_try_to_cancel(&cluster->parent->histtimer);
+	hrtimer_try_to_cancel(&cluster->parent->histtimer);
 }
 
 static enum hrtimer_restart clusttimer_fn(struct hrtimer *h)
@@ -697,17 +694,6 @@ static void clear_predict_history(void)
 
 static void update_history(struct cpuidle_device *dev, int idx);
 
-static inline bool is_cpu_biased(int cpu)
-{
-	u64 now = sched_clock();
-	u64 last = sched_get_cpu_last_busy_time(cpu);
-
-	if (!last)
-		return false;
-
-	return (now - last) < BIAS_HYST;
-}
-
 static int cpu_power_select(struct cpuidle_device *dev,
 		struct lpm_cpu *cpu)
 {
@@ -732,11 +718,6 @@ static int cpu_power_select(struct cpuidle_device *dev,
 	idx_restrict = cpu->nlevels + 1;
 
 	next_event_us = (uint32_t)(ktime_to_us(get_next_event_time(dev->cpu)));
-
-	if (is_cpu_biased(dev->cpu) && (!cpu_isolated(dev->cpu))) {
-		best_level = 0;
-		goto done_select;
-	}
 
 	for (i = 0; i < cpu->nlevels; i++) {
 		struct lpm_cpu_level *level = &cpu->levels[i];
@@ -816,7 +797,6 @@ static int cpu_power_select(struct cpuidle_device *dev,
 			histtimer_start(htime);
 	}
 
-done_select:
 	trace_cpu_power_select(best_level, sleep_us, latency_us, next_event_us);
 
 	trace_cpu_pred_select(idx_restrict_time ? 2 : (predicted ? 1 : 0),
@@ -1488,7 +1468,7 @@ bool psci_enter_sleep(struct lpm_cluster *cluster, int idx, bool from_idle)
 	 */
 	if (!idx) {
 		stop_critical_timings();
-		cpu_do_idle();
+		wfi();
 		start_critical_timings();
 		return 1;
 	} else {

@@ -1,4 +1,4 @@
-ccflags-y += -I$(src) -Idrivers/staging/android
+ccflags-y += -I$(src) -I $(srctree)/drivers/staging/android
 
 obj-$(CONFIG_FB_MSM_MDSS_MHL3) += mhl3/
 obj-$(CONFIG_MSM_DBA) += msm_dba/
@@ -64,6 +64,5 @@ obj-$(CONFIG_FB_MSM_QPIC_ILI_QVGA_PANEL) += qpic_panel_ili_qvga.o
 
 obj-$(CONFIG_FB_MSM_MDSS) += mdss_fb.o mdss_util.o
 obj-$(CONFIG_COMPAT) += mdss_compat_utils.o
-obj-$(CONFIG_NUBIA_LCD_DISP_PREFERENCE) += nubia_disp_preference.o
 
 obj-$(CONFIG_FB_MSM_MDSS) += mdss_livedisplay.o

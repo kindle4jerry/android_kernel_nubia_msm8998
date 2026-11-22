@@ -195,9 +195,6 @@ struct msm_actuator_cfg_data32 {
 		struct msm_actuator_get_info_t get_info;
 		struct msm_actuator_set_position_t setpos;
 		enum af_camera_name cam_name;
-		// ZTEMT: fuyipeng add for manual AF -----start
-		char act_name[MSM_ACTUATOT_MAX_NAME];
-		// ZTEMT: fuyipeng add for manual AF -----end
 	} cfg;
 };
 
@@ -218,6 +215,14 @@ struct sensorb_cfg_data32 {
 		struct msm_sensor_i2c_sync_params sensor_i2c_sync_params;
 	} cfg;
 };
+
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
+struct sensorb_info_fusion_id32 {
+	char sensor_type;
+	compat_uptr_t data_buffer;
+	char data_nums;
+};
+#endif
 
 struct msm_ois_params_t32 {
 	uint16_t data_size;
@@ -291,6 +296,11 @@ struct msm_flash_cfg_data_t32 {
 
 #define VIDIOC_MSM_LASER_LED_CFG32 \
 	_IOWR('V', BASE_VIDIOC_PRIVATE + 16, struct msm_laser_led_cfg_data_t32)
+
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
+#define VIDIOC_MSM_READ_FUSION_ID32 \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 16, struct sensorb_info_fusion_id32)
+#endif
 
 #endif
 

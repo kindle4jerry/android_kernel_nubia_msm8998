@@ -46,10 +46,7 @@
 #define ISPIF_INTF_CMD_DISABLE_IMMEDIATELY    0x02
 
 #define ISPIF_TIMEOUT_SLEEP_US                1000
-// ZTEMT: fuyipeng add for slowshutter -----start
-//#define ISPIF_TIMEOUT_ALL_US               1000000
-#define ISPIF_TIMEOUT_ALL_US               1000000000
-// ZTEMT: fuyipeng add for slowshutter -----end
+#define ISPIF_TIMEOUT_ALL_US               1000000
 #define ISPIF_SOF_DEBUG_COUNT                    5
 
 /* 3D Threshold value according guidelines for line width 1280 */
@@ -1422,7 +1419,11 @@ static int msm_ispif_stop_frame_boundary(struct ispif_device *ispif,
 		rc = readl_poll_timeout(ispif->base + intf_addr, stop_flag,
 					(stop_flag & 0xF) == 0xF,
 					ISPIF_TIMEOUT_SLEEP_US,
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
+					(params->reserved_param ? params->reserved_param : ISPIF_TIMEOUT_ALL_US));
+#else
 					ISPIF_TIMEOUT_ALL_US);
+#endif
 		if (rc < 0)
 			goto end;
 		if (cid_right_mask) {

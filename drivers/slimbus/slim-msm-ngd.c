@@ -405,7 +405,6 @@ static int ngd_check_hw_status(struct msm_slim_ctrl *dev)
 
 static int ngd_xfer_msg(struct slim_controller *ctrl, struct slim_msg_txn *txn)
 {
-	DECLARE_COMPLETION_ONSTACK(done);
 	DECLARE_COMPLETION_ONSTACK(tx_sent);
 
 	struct msm_slim_ctrl *dev = slim_get_ctrldata(ctrl);
@@ -418,6 +417,8 @@ static int ngd_xfer_msg(struct slim_controller *ctrl, struct slim_msg_txn *txn)
 	u8 wbuf[SLIM_MSGQ_BUF_LEN];
 	bool report_sat = false;
 	bool sync_wr = true;
+
+	reinit_completion(&dev->xfer_done);
 
 	if (txn->mc & SLIM_MSG_CLK_PAUSE_SEQ_FLG)
 		return -EPROTONOSUPPORT;
@@ -575,7 +576,9 @@ static int ngd_xfer_msg(struct slim_controller *ctrl, struct slim_msg_txn *txn)
 		wbuf[i++] = txn->wbuf[0];
 		if (txn->mc != SLIM_USR_MC_DISCONNECT_PORT)
 			wbuf[i++] = txn->wbuf[1];
-		ret = ngd_get_tid(ctrl, txn, &wbuf[i++], &done);
+
+		txn->comp = &dev->xfer_done;
+		ret = ngd_get_tid(ctrl, txn, &wbuf[i++], &dev->xfer_done);
 		if (ret) {
 			SLIM_ERR(dev, "TID for connect/disconnect fail:%d\n",
 					ret);
@@ -1787,6 +1790,8 @@ static int ngd_slim_probe(struct platform_device *pdev)
 
 	init_completion(&dev->reconf);
 	init_completion(&dev->ctrl_up);
+	init_completion(&dev->xfer_done);
+	init_completion(&dev->sync_done);
 	mutex_init(&dev->tx_lock);
 	mutex_init(&dev->ssr_lock);
 	spin_lock_init(&dev->tx_buf_lock);
@@ -1992,17 +1997,9 @@ static int ngd_slim_runtime_suspend(struct device *device)
 #ifdef CONFIG_PM_SLEEP
 static int ngd_slim_suspend(struct device *dev)
 {
-	int ret = 0;
+	int ret = -EBUSY;
 	struct platform_device *pdev = to_platform_device(dev);
 	struct msm_slim_ctrl *cdev = platform_get_drvdata(pdev);
-
-	if (cdev->state == MSM_CTRL_AWAKE) {
-		ret = -EBUSY;
-		SLIM_INFO(cdev, "system suspend: %d\n", ret);
-		return ret;
-
-	}
-
 	if (!pm_runtime_enabled(dev) ||
 		(!pm_runtime_suspended(dev) &&
 			cdev->state == MSM_CTRL_IDLE)) {
@@ -2020,6 +2017,17 @@ static int ngd_slim_suspend(struct device *dev)
 			pm_runtime_set_suspended(dev);
 			pm_runtime_enable(dev);
 		}
+	}
+	if (ret == -EBUSY) {
+		/*
+		* There is a possibility that some audio stream is active
+		* during suspend. We dont want to return suspend failure in
+		* that case so that display and relevant components can still
+		* go to suspend.
+		* If there is some other error, then it should be passed-on
+		* to system level suspend
+		*/
+		ret = 0;
 	}
 	SLIM_INFO(cdev, "system suspend\n");
 	return ret;

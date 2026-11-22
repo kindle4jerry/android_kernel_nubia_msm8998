@@ -2,7 +2,7 @@ KASAN_SANITIZE_scm.o := n
 
 CFLAGS_scm.o :=$(call as-instr,.arch_extension sec,-DREQUIRES_SEC=1)
 
-ccflags-$(CONFIG_MSM_QBT1000) += -Idrivers/misc/
+ccflags-$(CONFIG_MSM_QBT1000) += -I $(srctree)/drivers/misc/
 
 obj-$(CONFIG_MSM_INRUSH_CURRENT_MITIGATION) += inrush-current-mitigation.o
 obj-$(CONFIG_MSM_SMEM)	+=	msm_smem.o smem_debug.o
@@ -100,7 +100,7 @@ obj-$(CONFIG_MSM_KERNEL_PROTECT) += kernel_protect.o
 obj-$(CONFIG_MSM_RTB) += msm_rtb-hotplug.o
 obj-$(CONFIG_QCOM_REMOTEQDSS) += remoteqdss.o
 obj-$(CONFIG_MSM_SERVICE_LOCATOR) += service-locator.o
-#obj-$(CONFIG_MSM_QBT1000) += qbt1000.o
+obj-$(CONFIG_MSM_QBT1000) += qbt1000.o
 obj-$(CONFIG_MSM_RPM_RBCPR_STATS_V2_LOG) += rpm_rbcpr_stats_v2.o
 obj-$(CONFIG_MSM_RPM_STATS_LOG) += rpm_stats.o rpm_master_stat.o rpm_rail_stats.o system_stats.o
 obj-$(CONFIG_MSM_RPM_LOG) += rpm_log.o
