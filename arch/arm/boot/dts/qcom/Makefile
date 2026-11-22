@@ -180,6 +180,14 @@ dtb-$(CONFIG_ARCH_MSM8998) += sagit-msm8998-v2.1-mtp.dtb
 else
 ifeq ($(CONFIG_MACH_CHIRON),y)
 dtb-$(CONFIG_ARCH_MSM8998) += chiron-msm8998-v2.1-mtp.dtb
+else ifeq ($(CONFIG_MACH_NUBIA_NX563J),y)
+dtb-$(CONFIG_ARCH_MSM8998) += msm8998-mtp-NX563J.dtb \
+	msm8998-v2-mtp-NX563J.dtb \
+	msm8998-v2.1-mtp-NX563J.dtb
+else ifeq ($(CONFIG_MACH_NUBIA_NX609J),y)
+dtb-$(CONFIG_ARCH_MSM8998) += msm8998-mtp-NX609J.dtb \
+	msm8998-v2-mtp-NX609J.dtb \
+	msm8998-v2.1-mtp-NX609J.dtb
 else
 dtb-$(CONFIG_ARCH_MSM8998) += msm8998-sim.dtb \
 	msm8998-rumi.dtb \
