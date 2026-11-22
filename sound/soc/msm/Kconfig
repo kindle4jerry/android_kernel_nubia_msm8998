@@ -234,9 +234,11 @@ config SND_SOC_MSM8998
 	select SND_SOC_WCD9335
 	select SND_SOC_WCD934X
 	select SND_SOC_WSA881X
-	select SND_SOC_TFA98XX
-	select SND_SOC_TAS2559
-	select SND_SOC_TAS2559_MISC
+	# select SND_SOC_TFA98XX
+	# Nubia NX563J uses TAS2555 (CONFIG_SND_SOC_TAS2555_GENERIC); the
+	# xiaomi tas2559 codec clashes with the nubia driver's global symbols.
+	# select SND_SOC_TAS2559
+	# select SND_SOC_TAS2559_MISC
 	select SND_SOC_MSM_HDMI_CODEC_RX
 	select DTS_SRS_TM
 	select QTI_PP

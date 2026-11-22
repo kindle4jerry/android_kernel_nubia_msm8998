@@ -3291,6 +3291,7 @@ static int usbhs_direction_get(struct snd_kcontrol *kcontrol,
 
 static int spk_id_get(struct device_node *np, int type)
 {
+#ifdef CONFIG_MACH_XIAOMI_MSM8998
 	int id;
 	int state;
 
@@ -3322,6 +3323,9 @@ static int spk_id_get(struct device_node *np, int type)
 	}
 
 	return id;
+#else /* !CONFIG_MACH_XIAOMI_MSM8998 */
+	return VENDOR_ID_NONE;
+#endif
 }
 
 static int vendor_id_get(struct snd_kcontrol *kcontrol,
