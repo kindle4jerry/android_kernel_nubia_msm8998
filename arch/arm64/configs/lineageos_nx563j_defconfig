@@ -787,6 +787,13 @@ CONFIG_NTFS_FS=y
 CONFIG_NTFS_RW=y
 CONFIG_NLS_CODEPAGE_437=y
 CONFIG_NLS_ISO8859_1=y
+# PORT: /vendor/firmware_mnt (modem) and /vendor/bt_firmware are vfat with
+# CONFIG_FAT_DEFAULT_IOCHARSET="utf8"; without the utf8 NLS table those mounts
+# fail with "IO charset utf8 not found", which makes fs_mgr_mount_all() return
+# an error, so init never triggers 'nonencrypted' and never starts the 'main'
+# service class (installd, ...) - system_server then hangs waiting for installd.
+CONFIG_NLS_UTF8=y
+CONFIG_NLS_DEFAULT="utf8"
 CONFIG_SHMEM=y
 
 # ---- port: disable conflicting xiaomi-baseline drivers (default y) ----
