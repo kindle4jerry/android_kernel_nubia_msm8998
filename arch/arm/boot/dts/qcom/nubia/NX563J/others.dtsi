@@ -73,9 +73,14 @@
 	 * boot's kernel log survives the reboot into recovery.
 	 * 1MB total: 2 x 64K dmesg records + 512K console + 64K pmsg.
 	 */
+	/* NOTE (nx563j): kept disabled on purpose - fs/pstore/ram.c registers
+	 * the ramoops area from module parameters (nubia defaults).  Having both
+	 * instances claim the same carveout makes pstore records invalid between
+	 * boots.  The layout in ram.c must match the sizes documented below.
+	 */
 	ramoops {
 		compatible = "ramoops";
-		status = "ok";
+		status = "disabled";
 		memory-region = <&pstore_reserve_mem>;
 		record-size = <0x10000>;
 		console-size = <0x80000>;

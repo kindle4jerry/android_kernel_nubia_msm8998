@@ -40,24 +40,31 @@
 #define RAMOOPS_KERNMSG_HDR "===="
 #define MIN_MEM_SIZE 4096UL
 
-static ulong record_size = MIN_MEM_SIZE;
+/* PORT (nx563j): nubia's tree registers ramoops from module parameters while
+ * the DTS also provides a ramoops node; both claim the same 1 MiB carveout and
+ * the surviving layout differs between boots, which makes pstore records
+ * unreadable ("found existing invalid buffer").  Keep the module-parameter
+ * instance only (DTS node is disabled) and use one fixed layout everywhere:
+ * 6 x 64K dmesg records, 512K console, 64K pmsg.
+ */
+static ulong record_size = 0x10000UL;
 module_param(record_size, ulong, 0400);
 MODULE_PARM_DESC(record_size,
 		"size of each dump done on oops/panic");
 
 #ifdef CONFIG_PSTORE
-static ulong ramoops_console_size = 256*1024UL;
+static ulong ramoops_console_size = 0x80000UL;
 #else
 static ulong ramoops_console_size = MIN_MEM_SIZE;
 #endif
 module_param_named(console_size, ramoops_console_size, ulong, 0400);
 MODULE_PARM_DESC(console_size, "size of kernel console log");
 
-static ulong ramoops_ftrace_size = MIN_MEM_SIZE;
+static ulong ramoops_ftrace_size;
 module_param_named(ftrace_size, ramoops_ftrace_size, ulong, 0400);
 MODULE_PARM_DESC(ftrace_size, "size of ftrace log");
 
-static ulong ramoops_pmsg_size = MIN_MEM_SIZE;
+static ulong ramoops_pmsg_size = 0x10000UL;
 module_param_named(pmsg_size, ramoops_pmsg_size, ulong, 0400);
 MODULE_PARM_DESC(pmsg_size, "size of user space message log");
 
