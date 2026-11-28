@@ -33,10 +33,6 @@ DEFINE_MSM_MUTEX(msm_actuator_mutex);
 #define MAX_QVALUE 4096
 //ZTEMT:fanyc mod to avoid tick sound----end
 
-#ifdef CONFIG_MACH_XIAOMI_MSM8998
-#define FL 4
-#endif
-
 static struct v4l2_file_operations msm_actuator_v4l2_subdev_fops;
 static int32_t msm_actuator_power_up(struct msm_actuator_ctrl_t *a_ctrl);
 static int32_t msm_actuator_power_down(struct msm_actuator_ctrl_t *a_ctrl);
@@ -412,9 +408,6 @@ static int32_t msm_actuator_init_focus(struct msm_actuator_ctrl_t *a_ctrl,
 
 		switch (settings[i].i2c_operation) {
 		case MSM_ACT_WRITE:
-#ifdef CONFIG_MACH_XIAOMI_MSM8998
-			usleep_range(1000, 2000);
-#endif
 			rc = a_ctrl->i2c_client.i2c_func_tbl->i2c_write(
 				&a_ctrl->i2c_client,
 				settings[i].reg_addr,
@@ -427,9 +420,6 @@ static int32_t msm_actuator_init_focus(struct msm_actuator_ctrl_t *a_ctrl,
 					(settings[i].delay * 1000) + 1000);
 			break;
 		case MSM_ACT_POLL:
-#ifdef CONFIG_MACH_XIAOMI_MSM8998
-		case MSM_ACT_POLL_RESULT:
-#endif
 			rc = a_ctrl->i2c_client.i2c_func_tbl->i2c_poll(
 				&a_ctrl->i2c_client,
 				settings[i].reg_addr,
@@ -449,16 +439,6 @@ static int32_t msm_actuator_init_focus(struct msm_actuator_ctrl_t *a_ctrl,
 				settings[i].reg_data, settings[i].data_type);
 			break;
 		}
-
-#ifdef CONFIG_MACH_XIAOMI_MSM8998
-		if ((settings[i].i2c_operation == MSM_ACT_POLL_RESULT)
-			&& (rc == 1)) {
-			pr_err("%s:%d poll fail (non-fatal) addr = 0X%X, data = 0X%X, dt = %d",
-				__func__, __LINE__, settings[i].reg_addr,
-				settings[i].reg_data, settings[i].data_type);
-			break;
-		}
-#endif
 	}
 
 	a_ctrl->curr_step_pos = 0;
@@ -609,11 +589,6 @@ static int32_t msm_actuator_piezo_move_focus(
 	return rc;
 }
 
-#ifdef CONFIG_MACH_XIAOMI_MSM8998
-extern void msm_ois_shift_gain(int distance);
-extern bool SENSOR_SUPPORT_OIS_FLAG;
-#endif
-
 static int32_t msm_actuator_move_focus(
 	struct msm_actuator_ctrl_t *a_ctrl,
 	struct msm_actuator_move_params_t *move_params)
@@ -629,11 +604,6 @@ static int32_t msm_actuator_move_focus(
 	int dir = move_params->dir;
 	int32_t num_steps = move_params->num_steps;
 	struct msm_camera_i2c_reg_setting reg_setting;
-#ifdef CONFIG_MACH_XIAOMI_MSM8998
-	int distance = 0;
-	int target_margin = 0;
-	int origin_total = 0;
-#endif
 
 	//ZTEMT:jixd 20170313 add for af performance ---start
 	ringing_params_kernel = kmalloc(
@@ -782,32 +752,6 @@ static int32_t msm_actuator_move_focus(
 	}
 	kfree(ringing_params_kernel);//ZTEMT:jixd 20170313 add for af performance
 	a_ctrl->i2c_tbl_index = 0;
-
-#ifdef CONFIG_MACH_XIAOMI_MSM8998
-#ifdef CONFIG_MACH_CHIRON
-#define OIS_FACTOR1 160
-#define OIS_FACTOR2 35
-#else
-#define OIS_FACTOR1 140
-#define OIS_FACTOR2 35
-#endif
-#endif
-
-#ifdef CONFIG_MACH_XIAOMI_MSM8998
-	if ((SENSOR_SUPPORT_OIS_FLAG) && (!strcmp(a_ctrl->pdev->name, "ca0c000.qcom,cci:qcom,actuator@0"))) {
-		if (target_step_pos > 0) {
-			origin_total = ((a_ctrl->total_steps * 100) / OIS_FACTOR1);
-			target_margin = ((origin_total * OIS_FACTOR2) / 100);
-			if (target_step_pos > target_margin) {
-				distance = (((FL + (FL * (FL * origin_total))) / (target_step_pos - target_margin)) / 2);
-			} else {
-				distance = ((FL + (FL * (FL * origin_total) / 1)) / 2);
-			}
-			distance = distance < 10 ? 10 : distance;
-			msm_ois_shift_gain(distance);
-		}
-	}
-#endif
 	CDBG("Exit\n");
 
 	return rc;
@@ -1295,7 +1239,6 @@ static int32_t msm_actuator_power_down(struct msm_actuator_ctrl_t *a_ctrl)
 		a_ctrl->i2c_tbl_index = 0;
 		a_ctrl->actuator_state = ACT_OPS_INACTIVE;
 	}
-
 	CDBG("Exit\n");
 	return rc;
 }
@@ -1537,14 +1480,6 @@ static int32_t msm_actuator_set_param(struct msm_actuator_ctrl_t *a_ctrl,
 				pr_err("Error actuator_init_focus\n");
 				return -EFAULT;
 			}
-#ifdef CONFIG_MACH_XIAOMI_MSM8998
-			else if (rc == 1) {
-				kfree(a_ctrl->i2c_reg_tbl);
-				a_ctrl->i2c_reg_tbl = NULL;
-				pr_err("actuator_init_focus return 1\n");
-				return rc;
-			}
-#endif
 		}
 	}
 
@@ -2155,10 +2090,6 @@ static int32_t msm_actuator_platform_probe(struct platform_device *pdev)
 		(&pdev->dev)->of_node);
 	if (rc <= 0) {
 		pr_err("%s: No/Error Actuator GPIOs\n", __func__);
-#ifdef CONFIG_MACH_XIAOMI_MSM8998
-	} else if (!msm_actuator_t->gconf) {
-		pr_err("%s: %d: Actuator no GPIO control\n", __func__, __LINE__);
-#endif
 	} else {
 		msm_actuator_t->cam_pinctrl_status = 1;
 		rc = msm_camera_pinctrl_init(
