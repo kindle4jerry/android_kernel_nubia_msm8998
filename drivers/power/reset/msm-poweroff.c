@@ -84,7 +84,15 @@ static struct notifier_block panic_blk = {
 #endif
 
 static int dload_type = SCM_DLOAD_FULLDUMP;
-static int download_mode = 1;
+/* PORT (nx563j): keep download/dump mode disabled by default.  With the
+ * nubia default of 1 a panic early in boot (e.g. inside init/first stage,
+ * before Android has set persist.vendor.ap.restart_level=0) stores the dload
+ * flags, and the nubia ABL then enters EDL/9008 on the next boot whenever USB
+ * is attached.  Keeping it 0 makes such panics a plain reboot loop instead,
+ * so pstore keeps the trace for debugging.  init can still enable it at
+ * runtime through /sys/module/msm_poweroff/parameters/download_mode.
+ */
+static int download_mode;
 static struct kobject dload_kobj;
 static void *dload_mode_addr, *dload_type_addr;
 static bool dload_mode_enabled;
@@ -347,8 +355,21 @@ static void msm_restart_prepare(const char *cmd)
 #endif
 
 #ifdef CONFIG_QCOM_PRESERVE_MEM
-	need_warm_reset = true;
+	/*
+	 * PORT (nx563j): CONFIG_QCOM_PRESERVE_MEM used to force a warm reset for
+	 * every restart.  That keeps DDR contents (pstore) alive, but it also
+	 * preserves broken hardware state across reboots: e.g. the camera HAL
+	 * kept crashing after a plain reboot and only recovered after a full
+	 * power cycle.  Match stock semantics instead: only panic (and explicit
+	 * download mode) keeps memory; normal reboots get a real cold reset.
+	 */
+	if (in_panic || get_dload_mode())
+		need_warm_reset = true;
 #endif
+
+	pr_info("msm_restart_prepare: cmd=%s in_panic=%d dload=%d warm_reset=%d\n",
+		cmd ? cmd : "(null)", in_panic, get_dload_mode(), need_warm_reset);
+	pr_info("msm_restart_prepare: final warm_reset=%d\n", need_warm_reset);
 
 	/* Hard reset the PMIC unless memory contents must be maintained. */
 	if (need_warm_reset) {
@@ -415,8 +436,14 @@ static void msm_restart_prepare(const char *cmd)
 
 #ifdef CONFIG_NUBIA_PANIC_BOOTMODE
 	if (in_panic) {
-		printk(KERN_EMERG "set panic reboot reason=%x,download_mode=%x,need_warm_reset=%x\n",PON_RESTART_REASON_PANIC,download_mode,need_warm_reset);
-		qpnp_pon_set_restart_reason(PON_RESTART_REASON_PANIC);
+		printk(KERN_EMERG "panic: skip nubia panic bootmode (download_mode=%x,need_warm_reset=%x)\n",download_mode,need_warm_reset);
+		/*
+		 * PORT (nx563j): do not store PON_RESTART_REASON_PANIC.
+		 * The nubia bootloader turns that reason into "panic bootmode"
+		 * (EDL/9008 when USB is attached), which hides the actual panic.
+		 * Keep panics as plain warm resets so pstore keeps the trace.
+		 */
+		/* qpnp_pon_set_restart_reason(PON_RESTART_REASON_PANIC); */
 	}
 #endif
 
@@ -459,14 +486,22 @@ static void do_msm_restart(enum reboot_mode reboot_mode, const char *cmd)
 
 	msm_restart_prepare(cmd);
 
+	pr_info("msm_restart: cmd=%s restart_reason=%08x dload=%d\n",
+		cmd ? cmd : "(null)",
+		restart_reason ? __raw_readl(restart_reason) : 0, get_dload_mode());
+
 #ifdef CONFIG_QCOM_DLOAD_MODE
 	/*
 	 * Trigger a watchdog bite here and if this fails,
 	 * device will take the usual restart path.
 	 */
 
-	if (WDOG_BITE_ON_PANIC && in_panic)
-		msm_trigger_wdog_bite();
+	/* PORT (nx563j): skipped so a panic results in a plain warm reset
+	 * instead of a watchdog/TZ reset that the nubia ABL may treat as a
+	 * crash-dump request (EDL/9008).  Revert once the panic is fixed. */
+	if (WDOG_BITE_ON_PANIC && in_panic) {
+		pr_info("msm_restart: skipping watchdog bite on panic (debug)\n");
+	}
 #endif
 
 	scm_disable_sdi();
